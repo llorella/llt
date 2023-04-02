@@ -41,7 +41,8 @@ Configure the application settings in config.json:
 ## Usage
 To start a chat session, run the following command:
 
-```python test.py [-f FILE] [-p PROMPTS]
+```python 
+test.py [-f FILE] [-p PROMPTS]
 ```
 
 ## Options
