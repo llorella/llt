@@ -6,11 +6,11 @@ from message import Message
 from typing import List
 
 def save_message_history(root_message: Message, path: str) -> None:
-    if not os.path.exists(path):
-        os.makedirs(path)
+    if not path.endswith('.json'):
+        path += '.json'
     with open(path, 'w') as outfile:
         json.dump(root_message.expand_iter(), outfile, indent=4)
-    print(f"Message history saved to {filename}")
+    print(f"Message history saved to {path}")
     
 def load_message_history(path: str) -> Message:
     with open(path, 'r') as infile:
@@ -27,8 +27,6 @@ def run_conversation(model: str, dir: str, load_file: str, prompts: List[str]) -
     
     (i, n) = (1, len(prompts))
     while True: 
-        print(f"{current_message.role}: {current_message.content}")
-        
         if (i < n): 
            user_input = prompts[i]
            i+=1
@@ -36,7 +34,9 @@ def run_conversation(model: str, dir: str, load_file: str, prompts: List[str]) -
             user_input = input("Enter prompt: ")
             if user_input == 's':
                 save_file = input("Enter save file: ") or load_file 
-                save_message_history(root_message, os.path.join(dir, save_file))
+                tp = os.path.join(dir, save_file)
+                print(f"Saving to {tp}")
+                save_message_history(current_message, tp)
                 continue
             if user_input == 'x':
                 break
@@ -44,4 +44,5 @@ def run_conversation(model: str, dir: str, load_file: str, prompts: List[str]) -
         user_message = Message('user', user_input, current_message)
         current_message = user_message.prompt(model)
         
+        print(f"{current_message.role}: {current_message.content}")
         
