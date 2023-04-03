@@ -3,9 +3,12 @@ import os
 import json
 from typing import NamedTuple
 
-openai.api_key = (os.environ.get('OPENAI_API_KEY'))
+api_key = (os.environ.get('OPENAI_API_KEY'))
 
-with open ('config.json', 'r') as f:
+user_home = os.path.expanduser('~')
+print("User's home directory:", user_home)
+
+with open (os.path.join(user_home, ".chat/config.json"), 'r') as f:
     config = json.load(f)
     
 model = config['model']
