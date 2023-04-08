@@ -1,6 +1,6 @@
 # Chat CLI
 
-Chat-CLI is a highly configurable command-line interface for interacting with GPT-based models. It enables you to have interactive conversations, store and load conversation history, and tweak various settings for an optimal chat experience.
+chat_cli is a highly configurable command-line interface for interacting with GPT-based models. It enables you to have interactive conversations, store and load conversation history, and tweak various settings for an optimal chat experience.
 
 ## Features
 
@@ -9,11 +9,13 @@ Chat-CLI is a highly configurable command-line interface for interacting with GP
 - Preset prompts for conversation
 - Save and load conversation history
 - Command-line arguments for customizing settings
+- 
 ## Prerequisites
 
 Python 3.8 or higher
 An OpenAI API key
-Setup
+
+## Setup
 Clone the repository:
 ```bash
 git clone https://github.com/yourusername/chat_cli.git
