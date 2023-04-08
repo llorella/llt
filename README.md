@@ -18,7 +18,7 @@ An OpenAI API key
 Clone the repository:
 ```bash
 git clone https://github.com/yourusername/chat_cli.git
-cd chat-cli
+cd chat_cli
 ```
 
 Install the required dependencies:
