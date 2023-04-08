@@ -72,8 +72,11 @@ To start a chat session, run the following command:
 chat_cli [-h] [-c CONFIG] [-d HISTORY] [-f FILE] [-p [PROMPTS ...]] [-t TEMPERATURE]
 ```
 
-## Options
--c specifies different config.json path from default in project directory. Either way, command line arguments will replace corresponding config values at runtime, but leave config file unchanged. 
+## Arguments
+-c: specifies different config.json path from default in project directory. Either way, command line arguments will replace corresponding config values at runtime, but leave config file unchanged. 
+-d: directory path for save files. 
+-f: specified input file. 
+-p: preset promts.
 
 ## Commands during chat session
 s: Save the chat history to a JSON file. You can enter filename or use config input file if it exists. 
