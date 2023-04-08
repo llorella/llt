@@ -9,7 +9,6 @@ chat_cli is a highly configurable command-line interface for interacting with GP
 - Preset prompts for conversation
 - Save and load conversation history
 - Command-line arguments for customizing settings
-- 
 ## Prerequisites
 
 Python 3.8 or higher
