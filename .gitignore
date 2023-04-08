@@ -1,4 +1,7 @@
-sandbox/
+histories/
 __pycache__/
 *.json
+.todo
+
+
 

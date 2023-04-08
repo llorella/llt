@@ -1,19 +1,7 @@
 import openai
 import os
 import json
-from typing import NamedTuple
-
-api_key = (os.environ.get('OPENAI_API_KEY'))
-
-user_home = os.path.expanduser('~')
-print("User's home directory:", user_home)
-
-with open (os.path.join(user_home, ".chat/config.json"), 'r') as f:
-    config = json.load(f)
-    
-model = config['model']
-history_directory = config['history_directory']
-prompts = config.get('prompts')
+from typing import NamedTuple, Dict
 
 class Completion(NamedTuple):
     prompt_tokens: int
@@ -24,12 +12,11 @@ class Completion(NamedTuple):
     finish_reason: str
     index: int  
     
-def get_completion(model: str, messages: list[dict]) -> Completion:
+def get_completion(model: str, messages: list[dict], options: Dict) -> Completion:
     completion = openai.ChatCompletion.create(
         model = model,
         messages= messages,
-        max_tokens = 800,
-        temperature = 0.9)
+        temperature = options['temperature'])
     choice = completion.choices[0]
     message = choice.message
     usage = completion.usage
@@ -42,3 +29,10 @@ def get_completion(model: str, messages: list[dict]) -> Completion:
         finish_reason=choice.finish_reason,
         index=choice.index
     )
+     
+def get_embeddings(texts: list[str]) -> list[dict]:
+    embeddings = openai.Embedding.create(
+        model = "text-embedding-ada-002",
+        queries = texts
+    )
+    return embeddings
