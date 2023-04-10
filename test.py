@@ -2,24 +2,8 @@ import sys
 import argparse
 import json
 
+from api import get_config
 from main import run_conversation
-
-def get_config(user_config_path=None):
-    default_config_path = "config.json"
-    
-    with open(default_config_path, 'r') as f:
-        config = json.load(f)
-
-    if user_config_path:
-        with open(user_config_path, 'r') as f:
-            user_config = json.load(f)
-        
-        for key, value in user_config.items():
-            if key in config:
-                config[key].update(value)
-            else:
-                config[key] = value
-    return config
 
 def merge_args_and_config(args, config):
     if args.history:
@@ -29,7 +13,7 @@ def merge_args_and_config(args, config):
     if args.prompts:
         config['conversation']['prompts'] = args.prompts
     if args.temperature is not None:
-        config['conversation']['temperature'] = args.temperature
+        config['api']['options'] = args.temperature
 
     return config
 

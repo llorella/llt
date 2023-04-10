@@ -3,6 +3,24 @@ import os
 import json
 from typing import NamedTuple, Dict
 
+def get_config(user_config_path=None):
+    default_config_path = os.path.expanduser('~/.chat/config.json')
+    
+    with open(default_config_path, 'r') as f:
+        config = json.load(f)
+
+    if user_config_path:
+        with open(user_config_path, 'r') as f:
+            user_config = json.load(f)
+        
+        for key, value in user_config.items():
+            if key in config:
+                config[key].update(value)
+            else:
+                config[key] = value
+    return config
+
+
 class Completion(NamedTuple):
     prompt_tokens: int
     completion_tokens: int
