@@ -110,3 +110,5 @@ class Message:
             current_message = cls(message_dict['role'], message_dict['content'], current_message)
 
         return current_message
+        
+        

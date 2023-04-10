@@ -31,7 +31,7 @@ def parse_arguments():
 
 if __name__ == "__main__":
     print("Welcome to chat-cli, a highly configurable GPT chat client.")
-    print("Type 'x' to exit, 's' to save the conversation, and 'temp' to change the temperature.")
+    print("Type 'x' to exit, 's' to save the conversation, or 'h' for more options.")
 
     args = parse_arguments()
     config = get_config(args.config)
