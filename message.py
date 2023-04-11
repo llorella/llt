@@ -10,15 +10,15 @@ class Message:
         self.role = role
         self.content = content
         self.prev = prev
-        self.next = None
         self.tokens = tokens
         self.options = options
         
+        self.next = None
         if prev is not None:
             prev.next = self
         
-    def prompt(self, model: str) -> 'Message':
-        completion = get_completion(model, self.get_message_history(), self.options)
+    def prompt(self) -> 'Message':
+        completion = get_completion(self.get_message_history(), self.options)
         self.tokens = completion.prompt_tokens
         completion_message = Message(completion.role, completion.content, self, completion.completion_tokens, self.options)
         return completion_message   
@@ -61,7 +61,7 @@ class Message:
     
     def view(self, depth: Optional[int] = None) -> None:
         def print_message(message: 'Message'):
-            print(f"role: {message.role}\r\ncontent: {message.content}")
+            print(f"{message.role}: {message.content}")
 
         self.apply_recursive(print_message, depth)
 

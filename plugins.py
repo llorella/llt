@@ -1,26 +1,9 @@
 import os
 import sys
+import utils
 from message import Message
 
-
-def plugins(msg: Message, config: dict):
-    plugins = {
-        'edit' : lambda: editor_plugin(config),
-        'group': lambda: group_plugin(config),
-        'exit' : sys.exit,                         
-        'help' : lambda: _help_util(config),
-        'save' : lambda: save_message(msg, config), 
-        'load' : lambda: load_message(msg, config), 
-        'view' : lambda: view_message(msg, config)
-    }
-    
-    key_list = [key for key in plugins.keys()]
-    for key in key_list:
-        plugins[key[1 if key == 'exit' else 0]] = plugins[key]
-        
-    return plugins
-
-def _help_util(config: dict):
+def _help(msg: Message, config: dict):
     print("User options: ")
     for key, value in config['conversation']['user_options'].items():
         print(f"{key}: {value}")
@@ -29,6 +12,13 @@ def _help_util(config: dict):
     print(f"Roles (enter role for next message): { config['conversation']['roles'] }")
     return None
 
+def _exit(msg: Message, config: dict):
+    print(f"Exiting...")
+    sys.exit()
+    
+##################################################
+# message wrappers to behave like plugins
+    
 def save_message(msg: Message, config: dict):
     save_file = input("Enter save file: ") or config['io']['input_file']
     path = os.path.join(config['io']['history_directory'], save_file)
@@ -51,48 +41,54 @@ def load_message(msg: Message, config: dict):
     if load_before_after == "a":
         msg.get_root().prev = current_message
     return msg
-    
+
 def view_message(msg: Message, config: dict):
     depth = int(input("Enter depth: ")) or 1
     msg.view(depth)
     return msg
 
-def extract_code_blocks(completion):
-    code_blocks = re.findall(r'```(\w+)?\n(.*?)```', completion, re.DOTALL)
-    return code_blocks
+def new_message(msg: Message, config: dict):
+    role = input("Enter role: ")
+    content = input("Enter content: ")
+    return Message(role, content, msg)
 
-def save_code_blocks(code_blocks):
-    for idx, (language, code) in enumerate(code_blocks, 1):
-        if language:
-            file_extension = language.lower()
-        else:
-            file_extension = input("Can't get file type. Enter here or return to exit: ") or ".txt"
+exc = ['exit']
+abbv = lambda x: x[0] if x not in exc else x[1]
+pairs = lambda arr: [ (x, abbv(x)) for x in arr if len(x) > 1 ]
 
-        filename = f"code_block_{idx}.{file_extension}"
-        with open(filename, 'w') as file:
-            file.write(code.strip())
-        print(f"Saved code block {idx} as {filename}")
-        return filename
-
-def edit_source(filename: str, editor: str):
-    try:
-        if not os.path.isfile(filename):
-            print(f"Error: File '{filename}' does not exist.")
-            return
-        edit_command = f"{editor} {filename}"
-        
-        subprocess.run(vim_command, shell=True)
-    except Exception as e:
-        print(f"Error: {e}")
+def plugins():
+    exc = ['exit']
+    abbv = lambda x: x[0] if x not in exc else x[1]
+    
+    plugins = {
+        'exit' :  _exit,                         
+        'help' :  _help,
+        'save' :  save_message,
+        'load' :  load_message, 
+        'view' :  view_message,
+        'new'  :   new_message,
+        'edit' :  editor_plugin,
+        'group':  group_plugin
+    }
+    
+    plugins = { name: lambda msg, config, func=func: func(msg, config) for name, func in plugins.items() }
+    keys = list(plugins.keys())
+    for key in keys:
+        plugins[abbv(key)] = plugins[key]
+    
+    return plugins
 
 def editor_plugin(msg: Message, config: dict):
-    # 1. extrace_code_blocks from message
-    code_blocks = extract_code_blocks(msg.content)
-    # 2. save_code_blocks to file
-    filename = save_code_blocks(code_blocks)
-    # 3. edit source with editor
-    edit_source(filename, config['plugins']['editor'])
+    code_blocks = utils.extract_code_blocks(msg.content)
+    filename = utils.save_code_blocks(code_blocks)
+    utils.edit_source(filename, config['plugins']['editor'])
+    
     return msg
 
 def group_plugin(msg: Message, config: dict):
-   pass
+    try:
+        group = config['plugins']['group']
+    except KeyError:
+        group = input("No group name found in config. Enter group name or return to continue: ")
+    
+    

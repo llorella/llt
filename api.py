@@ -4,7 +4,7 @@ import json
 from typing import NamedTuple, Dict
 
 def get_config(user_config_path=None):
-    default_config_path = os.path.expanduser('~/.chat/config.json')
+    default_config_path = os.path.expanduser('config.json')
     
     with open(default_config_path, 'r') as f:
         config = json.load(f)
@@ -30,11 +30,11 @@ class Completion(NamedTuple):
     finish_reason: str
     index: int  
     
-def get_completion(model: str, messages: list[dict], options: Dict) -> Completion:
+def get_completion(messages: list[dict], knobs: Dict) -> Completion:
     completion = openai.ChatCompletion.create(
-        model = model,
+        model = knobs['model'],
         messages= messages,
-        temperature = options['temperature'])
+        temperature = knobs['options']['temperature'])
     choice = completion.choices[0]
     message = choice.message
     usage = completion.usage
