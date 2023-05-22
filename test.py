@@ -7,7 +7,7 @@ from main import run_conversation
 
 def merge_args_and_config(args, config):
     if args.history:
-        config['io']['history_directory'] = args.history
+        config['io']['save_dir'] = args.history
     if args.file:
         config['io']['input_file'] = args.file
     if args.prompts:

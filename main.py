@@ -6,6 +6,9 @@ from plugins import plugins, pairs, abbv
 from typing import Dict
 import enum
 
+from utils import custom_completer
+import parse_alphanumeric_substrings_module as pasm
+
 import re
 import subprocess
 
@@ -13,6 +16,10 @@ first_n_letters = lambda x, n: x[:n]
 first_n_letters_list = lambda x, n: [ first_n_letters(a, n) for a in x ]
 first_letters = lambda x: first_n_letters_list(x, 1)
 full_name = lambda x, arr: [ a for a in arr if x==a or x==abbv(a) ][0]
+
+def parse_command(command: str):
+    command_parts = pasm.parse_alphanumeric_substrings(command)
+    return command_parts
 
 def is_valid_knob(command: str, tunable_dict: dict):
     stripped_command = command.strip()
@@ -32,23 +39,24 @@ def is_valid_knob(command: str, tunable_dict: dict):
     return None
    
 def run_conversation(config: Dict) -> None:
-    
-    history_directory = config['io']['history_directory']
+    save_dir = config['io']['save_dir']
     context = config['io']['input_file']
-
-    user_role = 'user'
-    current_message = Message.load(os.path.join(history_directory, context)) if context is not None else base_message (roles[0])
     
-    test_tunable = { 'api' : {'model' : "gpt-3.5-turbo", "options": {"temperature": 1.0, "top_p": 1.0}}, 'conversation': { 'current_role': 'system', 'default_depth' : 1} }
+    user_role = 'user'
+    current_message = Message.load(os.path.expanduser(os.path.join(save_dir, context))) if context is not None else base_message (roles[0])
+    
+    test_tunable = config['api']
+    
     test_plugins = plugins()
     
     while True:
-        print(f"Available plugins: { pairs (test_plugins) }")
-        user_input = input(f"Enter prompt or plugin command: ")
-        if user_input in test_plugins:
-            run_plugin = test_plugins[user_input](current_message, config)
-            current_message = run_plugin if run_plugin else current_message
-        elif (tune:=is_valid_knob(user_input, test_tunable)) is not None:
+        user_input = input(f"Available plugins: { pairs (test_plugins) }\r\nEnter prompt or plugin command: ")
+        top_level = parse_command(user_input)[0]
+        
+        if top_level in test_plugins.keys():
+            current_message = test_plugins[top_level](current_message, config)
+            continue
+        elif (tune:=is_valid_knob(top_level, test_tunable)) is not None:
             (key, val) = tune
             new_val = input(f"{key}.{val}: {config[key][val]}\r\nEnter new value or return to continue: ")
             if new_val: 

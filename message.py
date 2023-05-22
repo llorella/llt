@@ -3,6 +3,7 @@ from enum import Enum
 from pydantic import BaseModel
 from api import get_completion
 import json
+import os
     
 
 class Message:
@@ -96,12 +97,14 @@ class Message:
     def save(self, path: str) -> None:
         if not path.endswith('.json'):
             path += '.json'
+        path = os.path.expanduser(path)
         with open(path, 'w') as outfile:
             json.dump(self.get_message_history(), outfile, indent=4)
         print(f"Message history saved to {path}")
     
     @classmethod
     def load(cls, path: str) -> 'Message':
+        path = os.path.expanduser(path)
         with open(path, 'r') as infile:
             message_dicts = json.load(infile)
 

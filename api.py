@@ -4,7 +4,7 @@ import json
 from typing import NamedTuple, Dict
 
 def get_config(user_config_path=None):
-    default_config_path = os.path.expanduser('config.json')
+    default_config_path = os.path.expanduser('~/.chat/config.json')
     
     with open(default_config_path, 'r') as f:
         config = json.load(f)
