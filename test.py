@@ -1,40 +1,50 @@
-import sys
 import argparse
-import json
+from typing import TypedDict, List
+import pprint
+from plugins import plugins
 
-from api import get_config
-from main import run_conversation
+class Colors:
+    YELLOW = '\033[93m'
+    WHITE = '\033[97m'
+    RESET = '\033[0m'
 
-def merge_args_and_config(args, config):
-    if args.history:
-        config['io']['save_dir'] = args.history
-    if args.file:
-        config['io']['input_file'] = args.file
-    if args.prompts:
-        config['conversation']['prompts'] = args.prompts
-    if args.temperature is not None:
-        config['api']['options'] = args.temperature
+def print_colored(text, color):
+    print(color + text + Colors.RESET)
 
-    return config
+def pretty_print_dict(message: TypedDict):
+    formatted_message = pprint.pformat(message, indent=4)
+    print_colored(formatted_message, Colors.WHITE)
+
+def print_header():
+    print_colored("***********************************", Colors.YELLOW)
+    print_colored("***** WELCOME TO MY CLI TOOL *****", Colors.WHITE)
+    print_colored("***********************************", Colors.YELLOW)
+
+def get_user_input(prompt):
+    print_colored(f"[CMD QUIZ] {prompt}: ", Colors.YELLOW, end='')
+    return input()
 
 def parse_arguments():
-    """
-    Parse command-line arguments and return the parsed arguments object.
-    """
-    parser = argparse.ArgumentParser(description="Chatbot using OpenAI's GPT model.")
-    parser.add_argument('-c', '--config', help="Specify a custom configuration file.")
-    parser.add_argument('-d', '--history', help="Set directory to look for save and load files.")
-    parser.add_argument('-f', '--file', help="Load a JSON file containing the history of previous runs.")
-    parser.add_argument('-p', '--prompts', type=str, nargs='*', help="Provide a list of preset prompts.")
-    parser.add_argument('-t', '--temperature', type=float, help="Set the temperature for generating responses.")
+    parser = argparse.ArgumentParser(description="Message processing tool")
+    parser.add_argument('--file', '-f', type=str, help="Specify file descriptor to read input from.", default=None)
     return parser.parse_args()
 
-if __name__ == "__main__":
-    print("Welcome to chat-cli, a highly configurable GPT chat client.")
-    
-    args = parse_arguments()
-    config = get_config(args.config)
-    config = merge_args_and_config(args, config)
-    
-    run_conversation(config)
+def main_loop():
+    messages: List[TypedDict] = []
+    _plugins = plugins()
+    #make plugin
+    print('Available commands:', { [(comm[0], comm) for comm in _plugins['commands'].keys()]})     
+    while 1:
+        comm = input('Enter command: ')
+        messages = _plugins['commands'][comm](messages, _plugins['presets']['file'])
 
+
+def main():
+    print_header()
+    args = parse_arguments()
+    main_loop()
+
+
+
+if __name__ == "__main__":
+    main()
