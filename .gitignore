@@ -2,6 +2,7 @@ histories/
 __pycache__/
 *.json
 .todo
-
+*.txt
+*.code-workspace
 
 

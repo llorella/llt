@@ -1,4 +1,5 @@
 from message import load_message, write_message, view_message, new_message, prompt_message
+from editor import edit_message
 
 def plugins():    
     #add startup plugins so they can be used asynchonously on startup
@@ -15,7 +16,8 @@ def plugins():
             'write' : write_message,
             'view' : view_message,
             'new' : new_message,
-            'complete' : prompt_message
+            'complete' : prompt_message,
+            'edit' : edit_message
         }
     }
     

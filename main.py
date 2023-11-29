@@ -1,11 +1,7 @@
-import os
-import sys
 import argparse
-
-from message import Message
+from typing import TypedDict, List
+import pprint
 from plugins import plugins
-
-from typing import Dict, List, Optional
 
 class Colors:
     YELLOW = '\033[93m'
@@ -15,36 +11,50 @@ class Colors:
 def print_colored(text, color):
     print(color + text + Colors.RESET)
 
-def ask_user_input(prompt):
-    print_colored(f"[INPUT REQUIRED] {prompt}: ", Colors.YELLOW, end='')
+def pretty_print_dict(message: TypedDict):
+    formatted_message = pprint.pformat(message, indent=4)
+    print_colored(formatted_message, Colors.WHITE)
+
+def print_header():
+    print_colored("***********************************", Colors.YELLOW)
+    print_colored("***** WELCOME TO MY CLI TOOL *****", Colors.WHITE)
+    print_colored("***********************************", Colors.YELLOW)
+
+def get_user_input(prompt):
+    print_colored(f"[CMD QUIZ] {prompt}: ", Colors.YELLOW, end='')
     return input()
 
-def run_message(msg: Message, plugins: Optional[Dict[str, any]]) -> Optional[Message]:
-    (presets, commands) = plugins['presets'], plugins['commands']
-
-    while 1: 
-        print('Available commands:', { (comm[0], comm) for comm in commands.keys()})     
-        comm = ask_user_input('Enter command: ')
-        if (comm in commands.keys()):
-            msg = commands[comm](msg, presets['file'] if presets['file'] else None)
-
 def parse_arguments():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description="Message processing tool")
     parser.add_argument('--file', '-f', type=str, help="Specify file descriptor to read input from.", default=None)
-    parser.add_argument('--role', '-r', type=str, help="Specify role.", default="system")
     return parser.parse_args()
 
-if __name__ == "__main__":
-    #tool that interfaces with message ops and user defined plugins
-    print("Launching CLI server..")
+def setup_command_shortcuts(commands):
+    command_map = {}
+    for command, func in commands.items():
+        command_map[command] = func
+        if command[0] not in command_map:
+            command_map[command[0]] = func
+    return command_map
+
+def print_available_commands(command_map):
+    commands_display = ", ".join(
+        [f"{full}({short})" if full[0] == short else full for full, short in command_map.items()]
+    )
+    print(f"Available commands: {commands_display}")
+
+
+def main():
+    print_header()
     args = parse_arguments()
-    if (args.file is not None):
-        with open(args.file, 'r') as f:
-            content = f.read()
-    else:
-        content = ''
-    msg = Message({'role': args.role, 'content': content})
-    plugins_dict = plugins()
+    messages: List[TypedDict] = []
+    _plugins = plugins()
+    command_map = setup_command_shortcuts(_plugins['commands'])
+    print_available_commands(command_map)    
+    
+    while 1:
+        comm = input('Enter command: ')
+        messages = command_map[comm](messages, _plugins['presets']['file'])
 
-    run_message(msg, plugins_dict)
-
+if __name__ == "__main__":
+    main()
