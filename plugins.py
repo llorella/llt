@@ -1,10 +1,9 @@
 from message import load_message, write_message, view_message, new_message, prompt_message
-from editor import edit_message
+from editor import edit_message, include_file
+
 
 def plugins():    
-    #add startup plugins so they can be used asynchonously on startup
-    #define types for these structs
-    #each user has defined plugins code
+    #each user can write plugin via simple interface with messages
 
     plugins = {
         'presets': { 
@@ -17,8 +16,8 @@ def plugins():
             'view' : view_message,
             'new' : new_message,
             'complete' : prompt_message,
-            'edit' : edit_message
-        }
+            'edit' : edit_message,
+            'file' : include_file        }
     }
     
     return plugins

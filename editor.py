@@ -5,7 +5,7 @@ import tempfile
 from typing import List, Tuple, Optional, Dict
 from message import Message
 
-# Pre-compiled regex pattern for performance
+#markdown format
 code_block_pattern = re.compile(r'```(\w+)?\n(.*?)```', re.DOTALL)
 
 extension_map: Dict[str, str] = {
@@ -20,7 +20,7 @@ def get_language_extension(language: str) -> Optional[str]:
     return extension_map.get(language, 'txt')
 
 def extract_code_blocks(content: str) -> List[Tuple[str, str]]:
-    """Extract code blocks and their respective languages from the content."""
+    #extract code blocks and their respective languages from the content
     return code_block_pattern.findall(content)
 
 def save_code_blocks(code_blocks: List[Tuple[str, str]], save_dir: str = '.llt') -> List[str]:
@@ -59,4 +59,14 @@ def edit_message(messages: List[Message], file: Optional[str]) -> List[Message]:
     for filename in filenames:
         edit_source(filename)
 
+    return messages
+
+def include_file(messages: List[Message], file_path: Optional[str]) -> List[Message]:
+    file_input = input(file_path + " is your current file. Change? (enter for no, any string for yes): ")
+    if file_input:
+        file_path = file_input
+
+    with open(file_path, 'r') as file:
+        data = file.read()
+    messages.append({'role' : 'user', 'content' : data})
     return messages
