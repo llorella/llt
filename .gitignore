@@ -4,6 +4,4 @@ __pycache__/
 .todo
 *.txt
 *.code-workspace
-
-
 .env/
