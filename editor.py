@@ -62,9 +62,7 @@ def edit_message(messages: List[Message], file: Optional[str]) -> List[Message]:
     return messages
 
 def include_file(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    file_path_input = input(args.content_file + " is your current file. Change? enter for no, any string for yes): ")
-    file_path = file_path_input if file_path_input else args.content_file
-
+    file_path = user_input_file() or args.content_file
     with open(file_path, 'r') as file:
         data = file.read()
     messages.append({'role' : 'user', 'content' : data})

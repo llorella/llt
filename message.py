@@ -18,13 +18,13 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[TypedDic
     return messages
 
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[TypedDict]:
-    file_path=user_input_file() if not args.context_file else open_file(args.context_file)
-    with open(args.context_file, 'w') as file:
+    file_path=user_input_file() or args.context_file
+    with open(file_path, 'w') as file:
         json.dump(messages, file, indent=4) 
     return messages
 
-def new_message(messages: Dict, args: Optional[Dict]) -> List[TypedDict]:
-    content=user_input_content() if not args.content_file else open_file(args.content_file)
+def new_message(messages: List[Message], args: Optional[Dict]) -> List[TypedDict]:
+    content=user_input_content() or open_file(args.content_file)
     role=user_input_role() or args.role
     message = Message(role=role, content=content)
     messages.append(message)
