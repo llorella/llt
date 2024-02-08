@@ -62,11 +62,50 @@ def edit_message(messages: List[Message], file: Optional[str]) -> List[Message]:
     return messages
 
 def include_file(messages: List[Message], file_path: Optional[str]) -> List[Message]:
-    file_input = input(file_path + " is your current file. Change? (enter for no, any string for yes): ")
+    file_input = input(file_path + " is your current file. Change? enter for no, any string for yes): ")
     if file_input:
         file_path = file_input
+
+    #if file_path.endswith('.jpg') or file_path.endswith('.png'):
+
 
     with open(file_path, 'r') as file:
         data = file.read()
     messages.append({'role' : 'user', 'content' : data})
     return messages
+
+def attach_image(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+    image_input = input(args.file + " is your current file. Change? (enter for no, any string for yes): ")
+    if image_input:
+        args.file = image_input
+    import base64
+    def encode_image(image_path):
+        with open(image_path, "rb") as image_file:
+            return base64.b64encode(image_file.read()).decode('utf-8')
+
+    base64_image = encode_image(args.file)   
+
+    msg_len = len(messages)
+    last_message = messages[msg_len-1]
+    
+    messages[msg_len-1] =  {
+        "role": last_message['role'],
+        "content": [
+            {
+            "type": "text",
+            "text": last_message['content']
+            },
+            {
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:image/jpeg;base64,{base64_image}"
+            }
+            }
+        ]
+        }
+        
+        
+
+    return messages
+
+    
