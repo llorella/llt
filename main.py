@@ -48,6 +48,8 @@ def main():
     messages: List[Dict[str, any]] = []
     if args.context_file:
         messages = load_message(messages, args)
+    if args.content_file:
+        messages = include_file(messages, args)
     
     command_map = setup_command_shortcuts(plugins)
     print_available_commands(command_map)

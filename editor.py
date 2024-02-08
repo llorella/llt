@@ -4,7 +4,7 @@ import subprocess
 import tempfile
 from typing import List, Tuple, Optional, Dict
 from message import Message
-
+from utils import user_input_file
 #markdown format
 code_block_pattern = re.compile(r'```(\w+)?\n(.*?)```', re.DOTALL)
 
@@ -61,13 +61,9 @@ def edit_message(messages: List[Message], file: Optional[str]) -> List[Message]:
 
     return messages
 
-def include_file(messages: List[Message], file_path: Optional[str]) -> List[Message]:
-    file_input = input(file_path + " is your current file. Change? enter for no, any string for yes): ")
-    if file_input:
-        file_path = file_input
-
-    #if file_path.endswith('.jpg') or file_path.endswith('.png'):
-
+def include_file(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+    file_path_input = input(args.content_file + " is your current file. Change? enter for no, any string for yes): ")
+    file_path = file_path_input if file_path_input else args.content_file
 
     with open(file_path, 'r') as file:
         data = file.read()
