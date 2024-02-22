@@ -1,15 +1,15 @@
-def user_input_role():
-    roles = ["user", "system", "assistant"]
-    role = input(f"Enter role (default is {roles[0]}): ") or roles[0]
+import os
+
+def input_role(role):
     return role
 
-def user_input_content():
+def content_input():
     content = input(f"Enter content: ") 
     return content
 
-def user_input_file():
-    file_path = input(f"Enter file path: ") 
-    return file_path
+def file_input(default_file: str = "empty"):
+    file_path = input(f"Enter file path (default is {default_file}): ") 
+    return os.path.expanduser(file_path)
 
 import pprint
 

@@ -1,68 +1,73 @@
+import argparse
+import json
 import os
-import re
 import subprocess
-import tempfile
-from typing import List, Tuple, Optional, Dict
+import sys
+from typing import List, Optional
 from message import Message
-from utils import user_input_file
-#markdown format
-code_block_pattern = re.compile(r'```(\w+)?\n(.*?)```', re.DOTALL)
+from typing import List, Optional, Dict
+from utils import file_input
 
-extension_map: Dict[str, str] = {
-    'python': 'py',
-    'bash': 'sh',
-    'cpp': 'cpp',
-    'javascript': 'js',
-    'text': 'txt',
-}
+def copy_to_clipboard(text: str) -> None:
+    try:
+        import pyperclip
+        pyperclip.copy(text)
+        print("Code block copied to clipboard. You can paste it in the editor.")
+    except ImportError:
+        print("pyperclip module not found. Skipping clipboard functionality.")
 
-def get_language_extension(language: str) -> Optional[str]:
-    return extension_map.get(language, 'txt')
-
-def extract_code_blocks(content: str) -> List[Tuple[str, str]]:
-    #extract code blocks and their respective languages from the content
-    return code_block_pattern.findall(content)
-
-def save_code_blocks(code_blocks: List[Tuple[str, str]], save_dir: str = '.llt') -> List[str]:
-    filenames = []
-    for idx, (language, code) in enumerate(code_blocks, 1):
-        print(f"type: {language}")
-        print(f"code: \n\n{code}\n\n")
-        file = input("Enter filename (default is code_block_idx): ") or f"code_block_{idx}"
-        filename = f"{save_dir}/{file}.{get_language_extension(language)}"
-        print(f"filename: {filename}")
+def save_or_edit_code_block(filename: str, code: str, editor: Optional[str]) -> None:
+    if editor:
+        copy_to_clipboard(code)
+        subprocess.run([editor, filename], check=True)
+    else:
         with open(filename, 'w') as file:
             file.write(code.strip())
-        filenames.append(filename)
-    return filenames
 
-def edit_source(filename: str, editor: str = 'vim') -> None:
-    if not os.path.isfile(filename):
-        print(f"Error: File '{filename}' does not exist.")
-        return
-    edit_command = f"{editor} {filename}"
-    subprocess.run(edit_command, check=True, shell=True)
+def handle_code_block(code_block: dict, dir_path: str, editor: Optional[str]) -> str:
+    print(f"File: {code_block['filename']}")
+    print(f"Type: {code_block['language']}")
+    print(f"Code: \n{code_block['code']}")
 
-def edit_message(messages: List[Message], file: Optional[str]) -> List[Message]:
-    if not messages:
-        print("No messages available to edit.")
-        return messages
+    action = input("Write to file (w), skip (s), or edit (e)? ").strip().lower()
 
-    last_message = messages[-1]
-    code_blocks = extract_code_blocks(last_message['content'])
-    if not code_blocks:
-        print("No code block found in the last message.")
-        return messages
+    if action in ('w', 'e'):
+        filename = os.path.join(dir_path, code_block['filename'] or file_input())
+        save_or_edit_code_block(filename, code_block['code'], editor if action == 'e' else None)
+        return f"{filename} changed."
+    elif action == 's':
+        return "Skipped."
+    
+def extract_code_blocks(markdown_text: str) -> List[dict]:
+    code_blocks = []
+    inside_code_block = False
+    current_code_block = {"filename": "", "code": "", "language": ""}
+    
+    for line in markdown_text.split('\n'):
+        if line.startswith("```"):
+            if not inside_code_block:
+                inside_code_block = True
+                _, _, language = line.partition('```')
+                current_code_block["language"] = language.strip()
+            else:
+                inside_code_block = False
+                code_blocks.append(current_code_block)
+                current_code_block = {"filename": "", "code": "", "language": ""}
+        elif inside_code_block:
+            current_code_block["code"] += line + '\n'
+    
+    return [block for block in code_blocks if block["code"].strip()]
 
-    save_dir = os.path.join(os.path.expanduser('~'), '.llt')
-    filenames = save_code_blocks(code_blocks, save_dir)
-    for filename in filenames:
-        edit_source(filename)
-
+def edit_message(messages: List[Message], args: Optional[str]) -> List[Message]:
+    print(f"Message directory: {args.message_dir}")
+    args.message_dir = file_input(args.message_dir) or args.message_dir
+    code_blocks = extract_code_blocks(messages[-1]['content'])
+    results = [handle_code_block(code_block, args.exec_dir, "vim") for code_block in code_blocks]
+    print(results)
     return messages
 
 def include_file(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    file_path = user_input_file() or args.content_file
+    file_path = os.path.expanduser(file_input())
     with open(file_path, 'r') as file:
         data = file.read()
     messages.append({'role' : 'user', 'content' : data})
