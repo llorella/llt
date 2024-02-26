@@ -11,9 +11,7 @@ class Message(TypedDict):
     content: any
 
 def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    print(f"Message directory: {args.message_dir}")
-    print(f"Context file: {args.context_file}")
-    args.context_file = file_input(args.context_file) or args.context_file
+    args.context_file = args.context_file if args.non_interactive else file_input(args.context_file)
     with open(os.path.join(args.message_dir, args.context_file), 'r') as file:
         msgs = json.load(file)
     for msg in msgs:
@@ -21,19 +19,13 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
     return messages
 
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    print(f"Message directory: {args.message_dir}")
-    print(f"Language log: {args.context_file}")
+    print(f"Context file: {args.context_file}")
     args.context_file = file_input(args.context_file) or args.context_file
     with open(os.path.join(args.message_dir, args.context_file), 'w') as file:
         json.dump(messages, file, indent=4) 
     return messages
 
 def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    print(f"Message directory: {args.message_dir}")
-    args.message_dir = file_input(args.message_dir) or args.message_dir
-    """ content=user_input_content()
-    role=user_input_role(args.role) 
-    message = Message(role=role, content=content) """
     message = Message(role=input_role(args.role) , content=content_input())
     messages.append(message)
     return messages
@@ -43,6 +35,16 @@ def prompt_message(messages: List[Message], args=Optional[Dict]) -> List[Message
     messages.append(Message(role=completion_msg['role'], content=completion_msg['content']))
     return messages
 
+def remove_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
+    if messages:
+        messages.pop()
+        print("Last message removed.")
+    else:
+        print("No messages to remove.")
+    return messages
+
+def review_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
+    return messages
 
 def view_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     colors = {
