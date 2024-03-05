@@ -1,5 +1,14 @@
 import os
 import pprint
+import readline
+import glob
+
+colors = {
+    'system': '\033[34m',    # blue
+    'user': '\033[32m',      # green
+    'assistant': '\033[35m', # magenta
+    'reset': '\033[0m'
+}
 
 class Colors:
     YELLOW = '\033[93m'
@@ -26,7 +35,28 @@ def input_role(role: str) -> str:
 def content_input() -> str:
     return input("Enter content: ")
 
-def file_input(default_file: str = "empty") -> str:
+def directory_completer(dir_path):
+    def completer(text, state):
+        files = os.listdir(dir_path)
+        matches = [file for file in files if file.startswith(text)]
+        return matches[state] if state < len(matches) else None
+    return completer
+
+def path_completer(text, state):
+    """File path completion callback function."""
+    line = readline.get_line_buffer().split()
+    # Replace ~ with the user's home directory
+    if '~' in text:
+        text = os.path.expanduser('~') + text[1:]
+    # Autocomplete directories with having a trailing slash
+    if os.path.isdir(text) and not text.endswith(os.path.sep):
+        return [text + os.path.sep][state]
+    return [x for x in os.listdir(os.path.dirname(text)) if x.startswith(os.path.basename(text))][state]
+    
+def file_input(default_file: str = "empty", dir: str = None) -> str:
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(directory_completer(dir) if dir else path_completer)
     file_path = input(f"Enter file path (default is {default_file}): ")
     return os.path.expanduser(file_path) if file_path else default_file
 

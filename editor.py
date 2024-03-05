@@ -1,12 +1,12 @@
 import os
 import subprocess
 from message import Message
-from utils import file_input
+from utils import file_input, content_input
 
 def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
-    dir_name = os.path.splitext(ll_file)[0]  # Remove the .ll extension from the file name
+    dir_name = os.path.splitext(ll_file)[0]  # dir name is the same as the file name without the .ll extension
     new_dir_path = os.path.join(exec_dir, dir_name)
-    if not os.path.exists(new_dir_path):  # Create the directory only if it doesn't already exist
+    if not os.path.exists(new_dir_path):  
         os.makedirs(new_dir_path)
     return new_dir_path
 
@@ -32,7 +32,7 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
     print(f"Code: \n{code_block['code']}")
     action = input("Write to file (w), skip (s), or edit (e)? ").strip().lower()
     if action in ('w', 'e'):
-        filename = os.path.join(dir_path, code_block['filename'] or file_input())
+        filename = os.path.join(dir_path, file_input(code_block['filename'], dir_path) or code_block['filename'])
         save_or_edit_code_block(filename, code_block['code'], editor if action == 'e' else '')
         return f"{filename} changed."
     elif action == 's':
@@ -49,7 +49,6 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
     for i, line in enumerate(lines):
         if line.startswith(code_block_marker):
             if not inside_code_block:
-                # Check if previous line contains the filename marker
                 if i > 0 and lines[i - 1].startswith(filename_marker):
                     current_code_block["filename"] = lines[i - 1].lstrip(filename_marker).strip()
                 _, _, language = line.partition(code_block_marker)
@@ -66,15 +65,14 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
     print(f"Exec directory: {args.exec_dir}")
-    args.exec_dir = file_input(args.exec_dir) or args.exec_dir
-    edit_directory = create_directory_for_file(args.exec_dir, args.context_file)
+    edit_directory = file_input(args.exec_dir) or create_directory_for_file(args.exec_dir, args.ll_file)
     code_blocks = extract_code_blocks(messages[-1]['content'])
-    results = [handle_code_block(code_block, edit_directory, "vim") for code_block in code_blocks]
-    print(results)
+    new_results = [handle_code_block(code_block, edit_directory, "vim") for code_block in code_blocks]
+    messages.append({'role': 'user', 'content': '\n'.join(new_results)})
     return messages
 
 def include_file(messages: list[Message], args: dict) -> list[Message]:
-    file_path = os.path.expanduser(file_input())
+    file_path = os.path.expanduser(file_input(args.content_file))
     with open(file_path, 'r') as file:
         data = file.read()
     messages.append({'role': 'user', 'content': data})
@@ -86,12 +84,10 @@ def encode_image(image_path: str) -> str:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def attach_image(messages: list[Message], args: dict) -> list[Message]:
-    image_input = input(f"{args['file']} is your current file. Change? (Enter for no, Type to change): ")
-    if image_input:
-        args['file'] = image_input
-    base64_image = encode_image(args['file'])
-    messages[-1]['content'] = [
-        {"type": "text", "text": messages[-1]['content']},
-        {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
-    ]
+    base64_image = encode_image(file_input(args.image_path))
+    messages.append({"role": "user", 
+        "content": [
+        {"type": "text", "text": content_input()},
+        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
+    ]})
     return messages
