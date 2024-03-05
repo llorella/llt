@@ -11,8 +11,8 @@ class Message(TypedDict):
     content: any
 
 def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    args.ll_file = args.ll_file if args.non_interactive else file_input(args.ll_file, args.message_dir)
-    with open(os.path.join(args.message_dir, args.ll_file), 'r') as file:
+    args.ll_file = args.ll_file if args.non_interactive else file_input(args.ll_file, args.conversation_dir)
+    with open(os.path.join(args.conversation_dir, args.ll_file), 'r') as file:
         msgs = json.load(file)
     for msg in msgs:
         messages.append(msg)
@@ -20,8 +20,8 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
 
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     print(f"Context file: {args.ll_file}")
-    args.ll_file = file_input(args.ll_file, args.message_dir) or args.ll_file
-    with open(os.path.join(args.message_dir, args.ll_file), 'w') as file:
+    args.ll_file = file_input(args.ll_file, args.conversation_dir) or args.ll_file
+    with open(os.path.join(args.conversation_dir, args.ll_file), 'w') as file:
         json.dump(messages, file, indent=4) 
     return messages
 

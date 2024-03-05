@@ -64,8 +64,8 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
     return [block for block in code_blocks if block["code"].strip()]
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
-    print(f"Exec directory: {args.exec_dir}")
-    edit_directory = file_input(args.exec_dir) or create_directory_for_file(args.exec_dir, args.ll_file)
+    print(f"Exec directory: {args.code_dir}")
+    edit_directory = file_input(args.code_dir) or create_directory_for_file(args.code_dir, args.ll_file)
     code_blocks = extract_code_blocks(messages[-1]['content'])
     new_results = [handle_code_block(code_block, edit_directory, "vim") for code_block in code_blocks]
     messages.append({'role': 'user', 'content': '\n'.join(new_results)})

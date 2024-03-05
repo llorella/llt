@@ -92,20 +92,18 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
     if messages[0]['role'] == 'system':
         system_prompt = messages[0]['content']
         messages = messages[1:]
-    print(system_prompt)
-    print(messages)
-
+   
     response_content = ""
     start_time = time.time()
     with anthropic_client.messages.stream(
         model=args.model,
         system=system_prompt,
         messages=messages,
-        max_tokens=1000
+        max_tokens=4000
     ) as stream:
         for text in stream.text_stream:
             print(text, end="", flush=True)
             response_content += text
     
-    return {'role': 'assistant', 'content': response_content+"\n"}
+    return {'role': 'assistant', 'content': response_content+"\n\n"}
   

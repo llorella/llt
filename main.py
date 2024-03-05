@@ -1,12 +1,15 @@
 import argparse
 import os
 import sys
+
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message
 from editor import edit_message, include_file, attach_image
-from utils import Colors, setup_command_shortcuts, print_available_commands, file_input
+from utils import Colors, setup_command_shortcuts, print_available_commands
+from evaluate import apply_eval
 
 import json
 import datetime
+import asyncio
 
 def quit_program(messages, args):
     print("Exiting...")
@@ -23,7 +26,8 @@ plugins = {
     'quit': quit_program,
     'image': attach_image,
     'remove': remove_message,
-    'detach': detach_message
+    'detach': detach_message,
+    'apply_eval': apply_eval
 }
 
 def init_arguments():
@@ -43,23 +47,23 @@ def init_arguments():
                             help="Specify temperature.", default=0.9)
         parser.add_argument('--non_interactive', action='store_true', help="Run in non-interactive mode.")
         parser.add_argument('--image_path', '-i', type=str, default="hello.png")
-        parser.add_argument('--exec_dir', '-e', type=str, default="exec")
-        parser.add_argument('--message_dir', '-d', type=str, default="msg")
-        parser.add_argument('--command_dir', '-c', type=str, default="commands")
+        parser.add_argument('--code_dir', '-e', type=str, default="exec")
+        parser.add_argument('--conversation_dir', '-c', type=str, default="msg")
+        parser.add_argument('--cmd_dir', '-d', type=str, default="commands")
         return parser.parse_args()
     
     args = parse_arguments()
     llt_path = os.getenv('LLT_PATH')
     if llt_path:
-        args.message_dir = os.path.join(llt_path, args.message_dir)
-        args.exec_dir = os.path.join(llt_path, args.exec_dir)
-        args.command_dir = os.path.join(llt_path, args.command_dir)
-        if not os.path.isdir(args.message_dir):
-            os.makedirs(args.message_dir)
-        if not os.path.isdir(args.exec_dir):
-            os.makedirs(args.exec_dir)
-        if not os.path.isdir(args.command_dir):
-            os.makedirs(args.command_dir)
+        args.conversation_dir = os.path.join(llt_path, args.conversation_dir)
+        args.code_dir = os.path.join(llt_path, args.code_dir)
+        args.cmd_dir = os.path.join(llt_path, args.cmd_dir)
+        if not os.path.isdir(args.conversation_dir):
+            os.makedirs(args.conversation_dir)
+        if not os.path.isdir(args.code_dir):
+            os.makedirs(args.code_dir)
+        if not os.path.isdir(args.cmd_dir):
+            os.makedirs(args.cmd_dir)
     
     return args
 
@@ -72,6 +76,14 @@ def log_command(command: str, messages: list, log_path: str) -> None:
         logfile.write(f"after_command: {json.dumps(messages[1])}\n")
         logfile.write(f"COMMAND_END\n\n")
 
+def combine_last_two_messages(messages, args):
+    if (not len(messages)):
+        messages = new_message(messages, args)
+    else:
+        last_message_content = messages[-1]['content'] + "\n" + args.prompt
+        messages[-1]['content'] = last_message_content
+    return messages
+
 def main():
     args = init_arguments()
     messages = list()
@@ -80,7 +92,7 @@ def main():
     if args.content_file:
         messages = include_file(messages, args)
     if args.prompt:
-        messages = new_message(messages, args)
+        messages = combine_last_two_messages(messages, args)
     if args.non_interactive:
         messages = prompt_message(messages, args)
         quit_program(messages, args)
@@ -98,13 +110,10 @@ def main():
         cmd = input('llt> ')
         if cmd in command_map:
             messages = command_map[cmd](messages, args)
-            log_command(cmd, messages[-2:], os.path.join(args.command_dir, os.path.splitext(args.ll_file)[0] + ".log"))
+            log_command(cmd, messages[-2:], os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log"))
         else:
             print("Unknown command.")
 
 if __name__ == "__main__":
     main()
-
-
-
 
