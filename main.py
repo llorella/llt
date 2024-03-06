@@ -9,7 +9,6 @@ from evaluate import apply_eval
 
 import json
 import datetime
-import asyncio
 
 def quit_program(messages, args):
     print("Exiting...")
@@ -73,7 +72,7 @@ def log_command(command: str, messages: list, log_path: str) -> None:
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
         logfile.write(f"before_command: {json.dumps(messages[0])}\n")
         logfile.write(f"command: {command}\n")
-        logfile.write(f"after_command: {json.dumps(messages[1])}\n")
+        logfile.write(f"after_command: {json.dumps(messages[len(messages)-1])}\n")
         logfile.write(f"COMMAND_END\n\n")
 
 def combine_last_two_messages(messages, args):

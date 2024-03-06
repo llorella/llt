@@ -34,7 +34,7 @@ def _test_image_completion(messages: list[dict[str, any]], args: dict) -> dict:
     completion = openai_client.chat.completions.create(
         model=args.model,
         messages=messages,
-        max_tokens=500
+        max_tokens=10000
         #temperature=args.temperature
     )
     import json
@@ -62,7 +62,7 @@ def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
         
     collected_messages = [m for m in collected_messages if m is not None]
     full_reply_content = ''.join(collected_messages)
-    
+    print(completion)
     return {'role': 'assistant', 'content': full_reply_content}
 
 def get_mistral_completion(messages: list[dict[str, any]], args: dict) -> dict:
@@ -84,7 +84,8 @@ def get_mistral_completion(messages: list[dict[str, any]], args: dict) -> dict:
         
     collected_messages = [m for m in collected_messages if m is not None]
     full_reply_content = ''.join(collected_messages)
-    
+    print(completion)
+
     return {'role': 'assistant', 'content': full_reply_content}
 
 def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict:
@@ -99,7 +100,7 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
         model=args.model,
         system=system_prompt,
         messages=messages,
-        max_tokens=4000
+        max_tokens=4096
     ) as stream:
         for text in stream.text_stream:
             print(text, end="", flush=True)
