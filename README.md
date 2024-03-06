@@ -1,11 +1,16 @@
 Optional flags provide additional customization:
 
-- `--context_file, -c`: Specify the filename for message history (default: `out.ll`).
-- `--content_input, -f`: Submit an optional prompt (default: empty).
-- `--exec_dir, -e`: Specify the root directory for execution files (default: `exec`).
-- `--message_dir, -d`: Specify the message history directory (default: `msg`).
+- `--ll_file, -l`: Specify the filename for message history (default: `out.ll`).
+- `--content_input, -f`: Submit an optional prompt file (default: empty).
+- `--code_dir, -e`: Specify the root directory for execution files (default: `exec`).
+- `--conversation_dir, -d`: Specify the message history directory (default: `msg`).
+- `--cmd_dir, -d`: Specify the message history directory (default: `commands`).
+
+- `--prompt, -p`: Preload user message with input string.
+- `--non_interactive`: Run in non-interactive mode.
+- 
 - `--role, -r`: Specify the user's role (default: `user`).
-- `--model, -m`: Specify the model to use from available options (default: first available model).
+- `--model, -m`: Specify the model to use from available options (default: `gpt-4`).
 - `--temperature, -t`: Specify the temperature for text generation (default: `0.9`).
 
 ### Commands and Examples:
