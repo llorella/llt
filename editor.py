@@ -3,6 +3,9 @@ import subprocess
 from message import Message
 from utils import file_input, content_input
 
+def list_files(dir_path):
+    return [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
+
 def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
     dir_name = os.path.splitext(ll_file)[0]  # dir name is the same as the file name without the .ll extension
     new_dir_path = os.path.join(exec_dir, dir_name)
