@@ -2,10 +2,10 @@ import argparse
 import os
 import sys
 
-from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message
+from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
 from editor import edit_message, include_file, attach_image
 from utils import Colors, setup_command_shortcuts, print_available_commands
-from evaluate import apply_eval
+from api import count_tokens, load_config
 
 import json
 import datetime
@@ -26,12 +26,13 @@ plugins = {
     'image': attach_image,
     'remove': remove_message,
     'detach': detach_message,
-    'apply_eval': apply_eval
+    'append': append_message,
+    'xcut': cut_message
 }
 
 def init_arguments():
     def parse_arguments():
-        parser = argparse.ArgumentParser(description="Message processing tool")
+        parser = argparse.ArgumentParser(description="llt, the little language terminal")
         
         parser.add_argument('--ll_file', '-l', type=str, 
                             help="Language log file. Log of natural language messages by at least one party.", default="")
@@ -66,22 +67,22 @@ def init_arguments():
     
     return args
 
-def log_command(command: str, messages: list, log_path: str) -> None:
+def log_command(command: str, message_before: dict, message_after: dict, model, log_path: str) -> None:
+    tokens_before = count_tokens(message_before, model)
+    tokens_after = count_tokens(message_after, model)
+    token_delta = tokens_after - tokens_before
+
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(messages[0])}\n")
+        logfile.write(f"before_command: {json.dumps(message_before)}\n")  
+        logfile.write(f"model: {model}\n")  
         logfile.write(f"command: {command}\n")
-        logfile.write(f"after_command: {json.dumps(messages[len(messages)-1])}\n")
+        logfile.write(f"after_command: {json.dumps(message_after)}\n") 
+        logfile.write(f"tokens_before: {tokens_before}\n")
+        logfile.write(f"tokens_after: {tokens_after}\n")
+        logfile.write(f"token_delta: {token_delta}\n")
         logfile.write(f"COMMAND_END\n\n")
-
-def combine_last_two_messages(messages, args):
-    if (not len(messages)):
-        messages = new_message(messages, args)
-    else:
-        last_message_content = messages[-1]['content'] + "\n" + args.prompt
-        messages[-1]['content'] = last_message_content
-    return messages
 
 def main():
     args = init_arguments()
@@ -91,7 +92,7 @@ def main():
     if args.content_file:
         messages = include_file(messages, args)
     if args.prompt:
-        messages = combine_last_two_messages(messages, args)
+        messages[-1]['content']+= "\n" + args.prompt
     if args.non_interactive:
         messages = prompt_message(messages, args)
         quit_program(messages, args)
@@ -108,11 +109,11 @@ def main():
     while True:
         cmd = input('llt> ')
         if cmd in command_map:
+            message_before = messages[-1]  # shallow copy of message before command execution
             messages = command_map[cmd](messages, args)
-            log_command(cmd, messages[-2:], os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log"))
+            log_command(cmd, message_before, messages[-1], args.model, os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log"))
         else:
             print("Unknown command.")
 
 if __name__ == "__main__":
     main()
-
