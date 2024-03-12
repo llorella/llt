@@ -1,7 +1,7 @@
 import os
 import subprocess
 from message import Message
-from utils import file_input, content_input
+from utils import path_input, content_input
 
 def list_files(dir_path):
     return [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
@@ -35,7 +35,7 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
     print(f"Code: \n{code_block['code']}")
     action = input("Write to file (w), skip (s), or edit (e)? ").strip().lower()
     if action in ('w', 'e'):
-        filename = os.path.join(dir_path, file_input(code_block['filename'], dir_path) or code_block['filename'])
+        filename = os.path.join(dir_path, path_input(code_block['filename'], dir_path) or code_block['filename'])
         save_or_edit_code_block(filename, code_block['code'], editor if action == 'e' else '')
         return f"{filename} changed."
     elif action == 's':
@@ -62,20 +62,21 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
                 code_blocks.append(current_code_block)
                 current_code_block = {"filename": "", "code": "", "language": ""}
         elif inside_code_block:
+
             current_code_block["code"] += line + '\n'
 
     return [block for block in code_blocks if block["code"].strip()]
 
-def edit_message(messages: list[Message], args: dict) -> list[Message]:
-    print(f"Exec directory: {args.code_dir}")
-    edit_directory = file_input(args.code_dir) or create_directory_for_file(args.code_dir, args.ll_file)
+def edit_message(messages: list[Message], args: dict) -> list[Message]:    print(f"Exec directory: {args.code_dir}"):
+    # None for default path means we are asking the user for a dir path
+    edit_directory = path_input(None, args.code_dir) or create_directory_for_file(args.code_dir, args.ll_file)
     code_blocks = extract_code_blocks(messages[-1]['content'])
     new_results = [handle_code_block(code_block, edit_directory, "vim") for code_block in code_blocks]
     messages.append({'role': 'user', 'content': '\n'.join(new_results)})
     return messages
 
 def include_file(messages: list[Message], args: dict) -> list[Message]:
-    file_path = os.path.expanduser(file_input(args.content_file))
+    file_path = os.path.expanduser(path_input(args.file_include))
     with open(file_path, 'r') as file:
         data = file.read()
     messages.append({'role': 'user', 'content': data})
@@ -87,7 +88,7 @@ def encode_image(image_path: str) -> str:
         return base64.b64encode(image_file.read()).decode('utf-8')
 
 def attach_image(messages: list[Message], args: dict) -> list[Message]:
-    base64_image = encode_image(file_input(args.image_path))
+    base64_image = encode_image(path_input(args.image_path))
     messages.append({"role": "user", 
         "content": [
         {"type": "text", "text": content_input()},

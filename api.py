@@ -10,10 +10,11 @@ openai_client = OpenAI()
 mistral_client = MistralClient()
 anthropic_client = anthropic.Client()
 
-def load_config():
-    config_path = "config.yaml"
-    with open(config_path, 'r') as config_file:
+def load_config(path: str):
+    with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
+
+api_config = load_config(os.getenv('LLT_PATH')+"/config.yaml")
 
 def count_tokens(message, model):
     model = "gpt-4" # todo: add support for other models
@@ -22,16 +23,17 @@ def count_tokens(message, model):
     return num_tokens
 
 def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
-    config = load_config()
-    available_models = config['models']
-    if args.model in available_models['mistral']:
-        return get_mistral_completion(messages, args)
-    elif args.model in available_models['openai']:
-        return get_openai_completion(messages, args)
-    elif args.model in available_models['anthropic']:
-        return get_anthropic_completion(messages, args)
+    available_models = api_config['models']
+    for provider in available_models:
+        if args.model in available_models[provider]:
+            for f in [get_anthropic_completion, get_openai_completion, get_mistral_completion]:
+                func_name = f.__name__
+                func_provider = func_name.split("_")[1]
+                if func_provider == provider:
+                    return f(messages, args)
     else:
         raise ValueError(f"Invalid model: {args.model}")
+
 
 def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
     start_time = time.time()
@@ -61,14 +63,12 @@ def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
 
 def get_mistral_completion(messages: list[dict[str, any]], args: dict) -> dict:
     start_time = time.time()
-    num_tokens = count_tokens(messages, args.model)
-    print(f"Input tokens: {num_tokens}")
 
     completion = mistral_client.chat_stream(
         messages=messages,
         model=args.model,
         temperature=args.temperature,
-        max_tokens=4096 - num_tokens
+        max_tokens=4096
     )
 
     collected_chunks = []

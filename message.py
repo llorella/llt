@@ -4,7 +4,7 @@ import json
 from typing import Optional, TypedDict, Dict, List, Type, Tuple
 
 from api import get_completion
-from utils import content_input, file_input, colors
+from utils import content_input, path_input, colors
 
 class Message(TypedDict):
     role: str
@@ -12,7 +12,7 @@ class Message(TypedDict):
 
 def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     (ll_file, conversation_dir) = (args.ll_file, args.conversation_dir)
-    ll_file = file_input(ll_file, conversation_dir) or ll_file
+    ll_file = path_input(ll_file, conversation_dir)
     if not ll_file:
         return messages
     args.ll_file = ll_file
@@ -29,7 +29,7 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
    
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     (ll_file, conversation_dir) = (args.ll_file, args.conversation_dir)
-    ll_file = file_input(ll_file, conversation_dir) or ll_file
+    ll_file = path_input(ll_file, conversation_dir) or ll_file
     if not ll_file:
         return messages
     args.ll_file = ll_file
