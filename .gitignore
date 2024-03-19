@@ -1,7 +1,11 @@
-histories/
-__pycache__/
-*.json
-.todo
-*.txt
-*.code-workspace
-.env/
+# Ignore all files by default
+*
+
+# Explicitly include the files you want to track
+!api.py
+!main.py
+!editor.py
+!message.py
+!utils.py
+!README.md
+!LICENSE
