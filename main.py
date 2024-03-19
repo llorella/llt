@@ -1,14 +1,16 @@
-import argparse
 import os
 import sys
 
-from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
+from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image
 from utils import Colors, setup_command_shortcuts, print_available_commands
-from api import count_tokens, load_config
+from api import count_tokens, api_config
 
 import json
 import datetime
+
+# PYTHON_ARGCOMPLETE_OK
+import argcomplete, argparse
 
 def quit_program(messages, args):
     print("Exiting...")
@@ -27,58 +29,67 @@ plugins = {
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
-    'xcut': cut_message
+    'xcut': x_message
 }
 
 def init_arguments():
+    llt_path = os.getenv('LLT_PATH') or exit("LLT_PATH environment variable not set.")
+    config = api_config
+    default_conversation_dir = os.path.join(llt_path, config['conversation_dir'])
+    default_code_dir = os.path.join(llt_path, config['code_dir'])
+    default_cmd_dir = os.path.join(llt_path, config['cmd_dir'])
+    for directory in [default_conversation_dir, default_code_dir, default_cmd_dir]:
+        if not os.path.isdir(directory):
+            os.makedirs(directory)
+
     def parse_arguments():
         parser = argparse.ArgumentParser(description="llt, the little language terminal")
-        
-        parser.add_argument('--ll_file', '-l', type=str, 
-                            help="Language log file. Log of natural language messages by at least one party.", default="")
-        parser.add_argument('--content_file', '-f', type=str, 
-                            help="Content file. (Needs renovating).", default="") 
+
+        def get_conversation_files(prefix, parsed_args, **kwargs):
+            conversation_dir = parsed_args.conversation_dir if parsed_args.conversation_dir else default_conversation_dir
+            return [f for f in os.listdir(conversation_dir) if f.startswith(prefix)]
+
+        parser.add_argument('--ll_file', '-l', type=str,
+                            help="Language log file. Log of natural language messages by at least one party.",
+                            default="").completer = get_conversation_files
+
+        parser.add_argument('--file_include', '-f', type=str,
+                            help="Content file. (Needs renovating).", default="")
         parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
-        parser.add_argument('--role', '-r', type=str, 
+        parser.add_argument('--role', '-r', type=str,
                             help="Specify role.", default="user")
-        parser.add_argument('--model', '-m', type=str, 
-                            help="Specify model.", default="gpt-4")
-        parser.add_argument('--temperature', '-t', type=float, 
-                            help="Specify temperature.", default=0.9)
-        parser.add_argument('--non_interactive', action='store_true', help="Run in non-interactive mode.")
-        parser.add_argument('--image_path', '-i', type=str, default="hello.png")
-        parser.add_argument('--code_dir', '-e', type=str, default="exec")
-        parser.add_argument('--conversation_dir', '-c', type=str, default="msg")
-        parser.add_argument('--cmd_dir', '-d', type=str, default="commands")
+
+        parser.add_argument('--model', '-m', type=str,
+                            help="Specify model.", default=config['models']['anthropic'][0], 
+                            choices=[model for provider in config['models'] 
+                                     for model in config['models'][provider]])
+        parser.add_argument('--temperature', '-t', type=float,
+                            help="Specify temperature.", default=0.1)
+        parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
+        parser.add_argument('--image_path', type=str, default="hello.png")
+        parser.add_argument('--code_dir', type=str, default=default_code_dir)
+        parser.add_argument('--conversation_dir', type=str, default=default_conversation_dir)
+        parser.add_argument('--cmd_dir', type=str, default=default_cmd_dir)
+
+        argcomplete.autocomplete(parser)
+
         return parser.parse_args()
-    
+
     args = parse_arguments()
-    llt_path = os.getenv('LLT_PATH')
-    if llt_path:
-        args.conversation_dir = os.path.join(llt_path, args.conversation_dir)
-        args.code_dir = os.path.join(llt_path, args.code_dir)
-        args.cmd_dir = os.path.join(llt_path, args.cmd_dir)
-        if not os.path.isdir(args.conversation_dir):
-            os.makedirs(args.conversation_dir)
-        if not os.path.isdir(args.code_dir):
-            os.makedirs(args.code_dir)
-        if not os.path.isdir(args.cmd_dir):
-            os.makedirs(args.cmd_dir)
-    
     return args
 
-def log_command(command: str, message_before: dict, message_after: dict, model, log_path: str) -> None:
-    tokens_before = count_tokens(message_before, model)
-    tokens_after = count_tokens(message_after, model)
+def log_command(command: str, message_before: dict, message_after: dict, args: dict) -> None:
+    tokens_before = count_tokens(message_before, args.model) if message_before else 0
+    tokens_after = count_tokens(message_after, args.model) if message_after else 0
     token_delta = tokens_after - tokens_before
-
+    log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log")
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(message_before)}\n")  
-        logfile.write(f"model: {model}\n")  
+        logfile.write(f"before_command: {json.dumps(message_before, indent=4)}\n")  
+        logfile.write(f"model: {args.model}\n")  
         logfile.write(f"command: {command}\n")
-        logfile.write(f"after_command: {json.dumps(message_after)}\n") 
+        logfile.write(f"after_command: {json.dumps(message_after, indent=4)}\n")
         logfile.write(f"tokens_before: {tokens_before}\n")
         logfile.write(f"tokens_after: {tokens_after}\n")
         logfile.write(f"token_delta: {token_delta}\n")
@@ -89,10 +100,10 @@ def main():
     messages = list()
     if args.ll_file:
         messages = load_message(messages, args)
-    if args.content_file:
+    if args.file_include:
         messages = include_file(messages, args)
     if args.prompt:
-        messages[-1]['content']+= "\n" + args.prompt
+        messages.append({'role': 'user', 'content': args.prompt})
     if args.non_interactive:
         messages = prompt_message(messages, args)
         quit_program(messages, args)
@@ -109,9 +120,9 @@ def main():
     while True:
         cmd = input('llt> ')
         if cmd in command_map:
-            message_before = messages[-1]  # shallow copy of message before command execution
+            message_before = messages[-1] if messages else {}
             messages = command_map[cmd](messages, args)
-            log_command(cmd, message_before, messages[-1], args.model, os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log"))
+            log_command(cmd, message_before, messages[-1] if messages else {}, args)
         else:
             print("Unknown command.")
 
