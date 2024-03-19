@@ -7,7 +7,8 @@ def list_files(dir_path):
     return [f for f in os.listdir(dir_path) if os.path.isfile(os.path.join(dir_path, f))]
 
 def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
-    dir_name = os.path.splitext(ll_file)[0]  # dir name is the same as the file name without the .ll extension
+    name = os.path.basename(ll_file)
+    dir_name = os.path.splitext(name)[0]  # dir name is the same as the file name without the .ll extension
     new_dir_path = os.path.join(exec_dir, dir_name)
     if not os.path.exists(new_dir_path):  
         os.makedirs(new_dir_path)

@@ -16,6 +16,23 @@ def quit_program(messages, args):
     print("Exiting...")
     sys.exit(0)
 
+def log_command(command: str, message_before: dict, message_after: dict, args: dict) -> None:
+    tokens_before = count_tokens(message_before, args.model) if message_before else 0
+    tokens_after = count_tokens(message_after, args.model) if message_after else 0
+    token_delta = tokens_after - tokens_before
+    log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log")
+    with open(log_path, 'a') as logfile:
+        logfile.write(f"COMMAND_START\n")
+        logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
+        logfile.write(f"before_command: {json.dumps(message_before, indent=4)}\n")  
+        logfile.write(f"model: {args.model}\n")  
+        logfile.write(f"command: {command}\n")
+        logfile.write(f"after_command: {json.dumps(message_after, indent=4)}\n")
+        logfile.write(f"tokens_before: {tokens_before}\n")
+        logfile.write(f"tokens_after: {tokens_after}\n")
+        logfile.write(f"token_delta: {token_delta}\n")
+        logfile.write(f"COMMAND_END\n\n")
+
 plugins = {
     'load': load_message,
     'write': write_message,
@@ -78,22 +95,7 @@ def init_arguments():
     args = parse_arguments()
     return args
 
-def log_command(command: str, message_before: dict, message_after: dict, args: dict) -> None:
-    tokens_before = count_tokens(message_before, args.model) if message_before else 0
-    tokens_after = count_tokens(message_after, args.model) if message_after else 0
-    token_delta = tokens_after - tokens_before
-    log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log")
-    with open(log_path, 'a') as logfile:
-        logfile.write(f"COMMAND_START\n")
-        logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(message_before, indent=4)}\n")  
-        logfile.write(f"model: {args.model}\n")  
-        logfile.write(f"command: {command}\n")
-        logfile.write(f"after_command: {json.dumps(message_after, indent=4)}\n")
-        logfile.write(f"tokens_before: {tokens_before}\n")
-        logfile.write(f"tokens_after: {tokens_after}\n")
-        logfile.write(f"token_delta: {token_delta}\n")
-        logfile.write(f"COMMAND_END\n\n")
+
 
 def main():
     args = init_arguments()
