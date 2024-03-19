@@ -67,8 +67,8 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
     return [block for block in code_blocks if block["code"].strip()]
 
-def edit_message(messages: list[Message], args: dict) -> list[Message]:    print(f"Exec directory: {args.code_dir}"):
-    # None for default path means we are asking the user for a dir path
+def edit_message(messages: list[Message], args: dict) -> list[Message]:    
+    print(f"Exec directory: {args.code_dir}") # none for default path means we are asking the user for a dir path
     edit_directory = path_input(None, args.code_dir) or create_directory_for_file(args.code_dir, args.ll_file)
     code_blocks = extract_code_blocks(messages[-1]['content'])
     new_results = [handle_code_block(code_block, edit_directory, "vim") for code_block in code_blocks]
@@ -92,6 +92,6 @@ def attach_image(messages: list[Message], args: dict) -> list[Message]:
     messages.append({"role": "user", 
         "content": [
         {"type": "text", "text": content_input()},
-        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{base64_image}"}}
+        {"type": "image_url", "image_url": {"url": f"{args.image_path}"}}
     ]})
     return messages

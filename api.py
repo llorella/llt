@@ -14,8 +14,9 @@ def load_config(path: str):
     with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
 
-api_config = load_config(os.getenv('LLT_PATH')+"/config.yaml")
+api_config = load_config(os.getenv('LLT_PATH') + "config.yaml")
 
+#placeholder with limited functionality
 def count_tokens(message, model):
     model = "gpt-4" # todo: add support for other models
     encoding = tiktoken.encoding_for_model(model)
@@ -24,6 +25,7 @@ def count_tokens(message, model):
 
 def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
     available_models = api_config['models']
+    #convert loop into a lambda/list comprehension
     for provider in available_models:
         if args.model in available_models[provider]:
             for f in [get_anthropic_completion, get_openai_completion, get_mistral_completion]:
