@@ -44,10 +44,8 @@ def directory_completer(dir_path):
 
 def path_completer(text, state):
     line = readline.get_line_buffer().split()
-    # Replace ~ with the user's home directory
     if '~' in text:
         text = os.path.expanduser('~') + text[1:]
-    # Autocomplete directories with having a trailing slash
     if os.path.isdir(text) and not text.endswith(os.path.sep):
         return [text + os.path.sep][state]
     return [x for x in os.listdir(os.path.dirname(text)) if x.startswith(os.path.basename(text))][state]
