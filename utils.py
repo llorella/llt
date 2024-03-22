@@ -72,3 +72,10 @@ def print_available_commands(command_map: dict) -> None:
         [f"{full}({short})" for full, short in command_map.items() if len(full) > 1]
     )
     print(f"Available commands: {commands_display}")
+
+import tiktoken
+def count_tokens(message, model):
+    model = "gpt-4" # todo: add support for other models
+    encoding = tiktoken.encoding_for_model(model)
+    num_tokens = 4 + len(encoding.encode(message['content']))
+    return num_tokens
