@@ -1,8 +1,6 @@
 import os
 import json
-
 from typing import Optional, TypedDict, Dict, List, Type, Tuple
-
 from api import get_completion
 from utils import content_input, path_input, colors
 
@@ -18,14 +16,12 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
     args.ll_file = ll_file
 
     file_path=os.path.join(conversation_dir, ll_file)
-    if not os.path.exists(file_path):
+    if not os.path.exists(file_path):  
         with open(file_path, 'w') as file:
-            json.dump(messages, file, indent=4)
+            json.dump(messages, file, indent=2)
     with open(file_path, 'r') as file:
-        msgs = json.load(file)
-    for msg in msgs:
-        messages.append(msg)
-    return messages 
+        messages.extend(json.load(file))
+    return messages
    
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     (ll_file, conversation_dir) = (args.ll_file, args.conversation_dir)
@@ -36,7 +32,7 @@ def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message
 
     file_path=os.path.join(conversation_dir, ll_file)
     with open(file_path, 'w') as file:
-        json.dump(messages, file, indent=4) 
+        json.dump(messages, file, indent=2) 
     return messages
 
 def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
@@ -81,9 +77,6 @@ def view_message(messages: List[Message], args: Optional[Dict] = None) -> List[M
     print(len(messages))
     return messages
 
-def back_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    return messages[:-1]
-
 def x_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     values = input("Enter values to cut: ").split(',')
     #can be integers or ranges of signed integers
@@ -93,10 +86,3 @@ def x_message(messages: List[Message], args: Optional[Dict] = None) -> List[Mess
         return messages[start:end]
     except ValueError:
         return messages[int(values[0]):]
-    
-
-
-
-
-
-
