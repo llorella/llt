@@ -14,7 +14,7 @@ def load_config(path: str):
     with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
 
-api_config = load_config(os.getenv('LLT_PATH') + "config.yaml")
+api_config = load_config(os.path.join(os.getenv('LLT_PATH'), "config.yaml"))
 
 #placeholder with limited functionality
 def count_tokens(message, model):
