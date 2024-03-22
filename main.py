@@ -1,11 +1,9 @@
 import os
 import sys
-
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image
 from utils import Colors, setup_command_shortcuts, print_available_commands
 from api import count_tokens, api_config
-
 import json
 import datetime
 
@@ -24,10 +22,10 @@ def log_command(command: str, message_before: dict, message_after: dict, args: d
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(message_before, indent=4)}\n")  
+        logfile.write(f"before_command: {json.dumps(message_before, indent=2)}\n")  
         logfile.write(f"model: {args.model}\n")  
         logfile.write(f"command: {command}\n")
-        logfile.write(f"after_command: {json.dumps(message_after, indent=4)}\n")
+        logfile.write(f"after_command: {json.dumps(message_after, indent=2)}\n")
         logfile.write(f"tokens_before: {tokens_before}\n")
         logfile.write(f"tokens_after: {tokens_after}\n")
         logfile.write(f"token_delta: {token_delta}\n")
@@ -67,11 +65,10 @@ def init_arguments():
             return [f for f in os.listdir(conversation_dir) if f.startswith(prefix)]
 
         parser.add_argument('--ll_file', '-l', type=str,
-                            help="Language log file. Log of natural language messages by at least one party.",
+                            help="Language log file. List of natural language messages stored as JSON.",
                             default="").completer = get_conversation_files
-
         parser.add_argument('--file_include', '-f', type=str,
-                            help="Content file. (Needs renovating).", default="")
+                            help="Read content from a file and include it in the conversation.", default="")
         parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
         parser.add_argument('--role', '-r', type=str,
                             help="Specify role.", default="user")
@@ -94,8 +91,6 @@ def init_arguments():
 
     args = parse_arguments()
     return args
-
-
 
 def main():
     args = init_arguments()

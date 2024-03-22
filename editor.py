@@ -10,8 +10,7 @@ def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
     name = os.path.basename(ll_file)
     dir_name = os.path.splitext(name)[0]  # dir name is the same as the file name without the .ll extension
     new_dir_path = os.path.join(exec_dir, dir_name)
-    if not os.path.exists(new_dir_path):  
-        os.makedirs(new_dir_path)
+    os.makedirs(new_dir_path, exist_ok=True)
     return new_dir_path
 
 def copy_to_clipboard(text: str) -> None:
@@ -37,6 +36,7 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
     action = input("Write to file (w), skip (s), or edit (e)? ").strip().lower()
     if action in ('w', 'e'):
         filename = os.path.join(dir_path, path_input(code_block['filename'], dir_path) or code_block['filename'])
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         save_or_edit_code_block(filename, code_block['code'], editor if action == 'e' else '')
         return f"{filename} changed."
     elif action == 's':
@@ -63,13 +63,12 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
                 code_blocks.append(current_code_block)
                 current_code_block = {"filename": "", "code": "", "language": ""}
         elif inside_code_block:
-
             current_code_block["code"] += line + '\n'
 
     return [block for block in code_blocks if block["code"].strip()]
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:    
-    print(f"Exec directory: {args.code_dir}") # none for default path means we are asking the user for a dir path
+    print(f"Exec directory: {args.code_dir}")
     edit_directory = path_input(None, args.code_dir) or create_directory_for_file(args.code_dir, args.ll_file)
     code_blocks = extract_code_blocks(messages[-1]['content'])
     new_results = [handle_code_block(code_block, edit_directory, "vim") for code_block in code_blocks]
