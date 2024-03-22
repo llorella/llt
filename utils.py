@@ -1,7 +1,6 @@
 import os
 import pprint
 import readline
-import glob
 
 colors = {
     'system': '\033[34m',    # blue

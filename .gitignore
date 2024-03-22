@@ -1,7 +1,7 @@
-# Ignore all files by default
+# ignore all files by default
 *
 
-# Explicitly include the files you want to track
+# explicitly include the files you want to track
 !api.py
 !main.py
 !editor.py
@@ -9,3 +9,4 @@
 !utils.py
 !README.md
 !LICENSE
+!requirements.txt
