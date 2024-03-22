@@ -117,13 +117,6 @@ Type `help` within the application to see available commands. Some common comman
           return n * factorial(n - 1)
   ```
 
-  To use this function, you can call it with a number as an argument. For example:
-
-  ```python
-  print(factorial(5))  # Output: 120
-  ```
-
-
   ```
 - `edit`: Edit and manage code blocks from the last message.
   ```
