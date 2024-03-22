@@ -4,7 +4,7 @@ Optional flags provide additional customization:
 - `--content_input, -f`: Submit an optional prompt file (default: empty).
 - `--code_dir, -e`: Specify the root directory for execution files (default: `exec`).
 - `--conversation_dir, -n`: Specify the message history directory (default: `msg`).
-- `--cmd_dir, -d`: Specify the message history directory (default: `commands`).
+- `--cmd_dir, -d`: Specify the command logging directory (default: `commands`).
 
 - `--prompt, -p`: Preload user message with input string.
 - `--non_interactive`: Run in non-interactive mode.
@@ -78,7 +78,7 @@ Type `help` within the application to see available commands. Some common comman
 
 ## Development and Contributions
 
-Contributions to Little Language Terminal are welcome! Please feel free to fork the repository, make changes, and submit pull requests. For major changes, please open an issue first to discuss what you would like to change.
+Contributions to llt are welcome! Please feel free to fork the repository, make changes, and submit pull requests. For major changes, please open an issue first to discuss what you would like to change.
 
 ## License
 
