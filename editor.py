@@ -1,5 +1,7 @@
 import os
 import subprocess
+import base64
+
 from message import Message
 from utils import path_input, content_input
 
@@ -83,15 +85,14 @@ def include_file(messages: list[Message], args: dict) -> list[Message]:
     return messages
 
 def encode_image(image_path: str) -> str:
-    import base64
     with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+        return base64.b64encode(image_file.read()).decode()
 
 def attach_image(messages: list[Message], args: dict) -> list[Message]:
     base64_image = encode_image(path_input(args.image_path))
     messages.append({"role": "user", 
         "content": [
         {"type": "text", "text": content_input()},
-        {"type": "image_url", "image_url": {"url": f"{args.image_path}"}}
+        {"type": "image_url", "image_url": {"url": f"{encode_image(args.image_path)}"}}
     ]})
     return messages
