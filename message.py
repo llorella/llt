@@ -2,37 +2,28 @@ import os
 import json
 from typing import Optional, TypedDict, Dict, List, Type, Tuple
 from api import get_completion
-from utils import content_input, path_input, colors
+from utils import content_input, get_file_path, colors
 
 class Message(TypedDict):
     role: str
     content: any
 
 def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    (ll_file, ll_dir) = (args.ll_file, args.ll_dir)
-    ll_file = path_input(ll_file, ll_dir)
-    if not ll_file:
+    file_path = get_file_path(args)
+    if not file_path:
         return messages
-    args.ll_file = ll_file
 
-    file_path=os.path.join(ll_dir, ll_file)
-    if not os.path.exists(file_path):  
-        with open(file_path, 'w') as file:
-            json.dump(messages, file, indent=2)
     with open(file_path, 'r') as file:
         messages.extend(json.load(file))
     return messages
-   
-def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    (ll_file, ll_dir) = (args.ll_file, args.ll_dir)
-    ll_file = path_input(ll_file, ll_dir) or ll_file
-    if not ll_file:
-        return messages
-    args.ll_file = ll_file
 
-    file_path=os.path.join(ll_dir, ll_file)
+def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+    file_path = get_file_path(args)
+    if not file_path:
+        return messages
+
     with open(file_path, 'w') as file:
-        json.dump(messages, file, indent=2) 
+        json.dump(messages, file, indent=2)
     return messages
 
 def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
@@ -40,7 +31,7 @@ def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     messages.append(message)
     return messages
 
-def prompt_message(messages: List[Message], args=Optional[Dict]) -> List[Message]:
+def prompt_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     completion_msg = get_completion(messages, args)
     messages.append(Message(role=completion_msg['role'], content=completion_msg['content']))
     return messages

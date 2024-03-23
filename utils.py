@@ -1,6 +1,8 @@
 import os
 import pprint
 import readline
+from typing import Optional, Dict
+import json
 
 colors = {
     'system': '\033[34m',    # blue
@@ -72,6 +74,19 @@ def print_available_commands(command_map: dict) -> None:
         [f"{full}({short})" for full, short in command_map.items() if len(full) > 1]
     )
     print(f"Available commands: {commands_display}")
+
+def get_file_path(args: Optional[Dict]) -> Optional[str]:
+    ll_file, ll_dir = args.ll_file, args.ll_dir
+    ll_file = path_input(ll_file, ll_dir)
+    if not ll_file:
+        return None
+    args['ll_file'] = ll_file 
+
+    file_path = os.path.join(ll_dir, ll_file)
+    if not os.path.exists(file_path):
+        with open(file_path, 'w') as file:
+            json.dump([], file, indent=2)  
+    return file_path
 
 import tiktoken
 def count_tokens(message, model):
