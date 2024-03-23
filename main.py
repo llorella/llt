@@ -81,7 +81,7 @@ def init_arguments():
                             help="Specify role.", default="user")
 
         parser.add_argument('--model', '-m', type=str,
-                            help="Specify model.", default=full_model_choices, 
+                            help="Specify model.", default="gpt-4", 
                             choices=full_model_choices)
         parser.add_argument('--temperature', '-t', type=float,
                             help="Specify temperature.", default=0.1)

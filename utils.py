@@ -27,8 +27,11 @@ class Colors:
 
     @staticmethod
     def print_header():
+        Colors.print_colored("*********************************************************", Colors.YELLOW)
+        Colors.print_colored("*********************************************************", Colors.YELLOW)
         Colors.print_colored("***** Welcome to llt, the little language terminal. *****", Colors.WHITE)
         Colors.print_colored("*********************************************************", Colors.YELLOW)
+        Colors.print_colored("*********************************************************\n", Colors.YELLOW)
 
 def input_role(role: str) -> str:
     return input(f"Enter role(default is {role}): ") or role
@@ -58,7 +61,6 @@ def path_input(default_file: str = None, exec_dir: str = None) -> str:
     file_path = input(f"Enter file path (default is {default_file}): ")
     print(f"Path: {os.path.expanduser(file_path)}")
     return os.path.expanduser(file_path) if file_path else default_file
-
 
 def setup_command_shortcuts(commands: dict) -> dict:
     command_map = {}
