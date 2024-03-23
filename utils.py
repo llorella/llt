@@ -62,21 +62,6 @@ def path_input(default_file: str = None, exec_dir: str = None) -> str:
     print(f"Path: {os.path.expanduser(file_path)}")
     return os.path.expanduser(file_path) if file_path else default_file
 
-def setup_command_shortcuts(commands: dict) -> dict:
-    command_map = {}
-    for command, func in commands.items():
-        command_map[command] = func
-        shortcut = command[0]
-        if shortcut not in command_map:
-            command_map[shortcut] = func
-    return command_map
-
-def print_available_commands(command_map: dict) -> None:
-    commands_display = ", ".join(
-        [f"{full}({short})" for full, short in command_map.items() if len(full) > 1]
-    )
-    print(f"Available commands: {commands_display}")
-
 def get_file_path(args: Optional[Dict]) -> Optional[str]:
     ll_file, ll_dir = args.ll_file, args.ll_dir
     ll_file = path_input(ll_file, ll_dir)

@@ -2,7 +2,7 @@ import os
 import sys
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image
-from utils import Colors, setup_command_shortcuts, print_available_commands
+from utils import Colors
 
 from api import api_config, full_model_choices
 
@@ -107,7 +107,7 @@ def init_arguments():
 def help_command(messages: list, args: dict) -> list:
     print("Available commands:")
     for command, func in plugins.items():
-        print(f"  {command}: {func.__doc__}")
+        print(f"  {command}: {func}")
     return messages
 
 def main():
@@ -128,9 +128,7 @@ def main():
     greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
 
-    command_map = setup_command_shortcuts(plugins)
-    command_map['help'] = help_command
-    print_available_commands(command_map)
+    command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}, 'h': help_command}
 
     while True:
         cmd = input('llt> ')
