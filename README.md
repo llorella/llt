@@ -39,8 +39,9 @@ Optional flags provide additional customization:
 
 ```
 usage: main.py [-h] [--ll_file LL_FILE] [--file_include FILE_INCLUDE] [--prompt PROMPT] [--role ROLE]
-               [--model MODEL] [--temperature TEMPERATURE] [--non_interactive] [--image_path IMAGE_PATH]
-               [--code_dir CODE_DIR] [--conversation_dir CONVERSATION_DIR] [--cmd_dir CMD_DIR]
+               [--model MODEL] [--temperature TEMPERATURE] [--image_path IMAGE_PATH]
+               [--cmd_dir CMD_DIR] [--exec_dir EXEC_DIR] [--ll_dir LL_DIR]
+               [--non_interactive]
 
 llt, the little language terminal
 
@@ -60,9 +61,9 @@ options:
   --non_interactive, -n
                         Run in non-interactive mode.
   --image_path IMAGE_PATH
-  --code_dir CODE_DIR
-  --conversation_dir CONVERSATION_DIR
   --cmd_dir CMD_DIR
+  --exec_dir EXEC_DIR
+  --ll_dir LL_DIR
 ```
 
 - `--ll_file, -l`: Specify the filename for message history (default: `out.ll`).
@@ -73,9 +74,9 @@ options:
 - `--temperature, -t`: Specify the temperature for text generation (default: `0.9`).
 - `--non_interactive, -n`: Run in non-interactive mode.
 - `--image_path`: Specify the path to an image file.
-- `--code_dir`: Specify the root directory for execution files (default: `exec`).
-- `--conversation_dir`: Specify the message history directory (default: `msg`).
 - `--cmd_dir`: Specify the command history directory (default: `commands`).
+- `--exec_dir`: Specify the root directory for execution files (default: `exec`).
+- `--ll_dir`: Specify the directory for message history (default: `msg`).
 
 
 ### Commands and Examples:

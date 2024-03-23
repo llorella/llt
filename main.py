@@ -3,7 +3,12 @@ import sys
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image
 from utils import Colors, setup_command_shortcuts, print_available_commands
-from api import count_tokens, api_config
+
+from api import api_config, full_model_choices
+
+#todo: move count_tokens to plugin that runs every cycle
+from utils import count_tokens
+
 import json
 import datetime
 
@@ -50,40 +55,47 @@ plugins = {
 def init_arguments():
     llt_path = os.getenv('LLT_PATH') or exit("LLT_PATH environment variable not set.")
     config = api_config
-    default_conversation_dir = os.path.join(llt_path, config['conversation_dir'])
-    default_code_dir = os.path.join(llt_path, config['code_dir'])
     default_cmd_dir = os.path.join(llt_path, config['cmd_dir'])
-    for directory in [default_conversation_dir, default_code_dir, default_cmd_dir]:
+    default_exec_dir = os.path.join(llt_path, config['exec_dir'])
+    default_ll_dir = os.path.join(llt_path, config['ll_dir'])
+    for directory in [default_ll_dir, default_exec_dir, default_cmd_dir]:
         if not os.path.isdir(directory):
             os.makedirs(directory)
 
     def parse_arguments():
         parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
-        def get_conversation_files(prefix, parsed_args, **kwargs):
-            conversation_dir = parsed_args.conversation_dir if parsed_args.conversation_dir else default_conversation_dir
-            return [f for f in os.listdir(conversation_dir) if f.startswith(prefix)]
+        def get_ll_files(prefix, parsed_args, **kwargs):
+            ll_dir = parsed_args.ll_dir if parsed_args.ll_dir else default_ll_dir
+            return [f for f in os.listdir(ll_dir) if f.startswith(prefix)]
 
         parser.add_argument('--ll_file', '-l', type=str,
                             help="Language log file. List of natural language messages stored as JSON.",
-                            default="").completer = get_conversation_files
+                            default="").completer = get_ll_files
         parser.add_argument('--file_include', '-f', type=str,
-                            help="Read content from a file and include it in the conversation.", default="")
+                            help="Read content from a file and include it in the ll.", default="")
+        parser.add_argument('--image_path', type=str, default="")
+
         parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
         parser.add_argument('--role', '-r', type=str,
                             help="Specify role.", default="user")
 
         parser.add_argument('--model', '-m', type=str,
-                            help="Specify model.", default=config['models']['anthropic'][0], 
-                            choices=[model for provider in config['models'] 
-                                     for model in config['models'][provider]])
+                            help="Specify model.", default=full_model_choices, 
+                            choices=full_model_choices)
         parser.add_argument('--temperature', '-t', type=float,
                             help="Specify temperature.", default=0.1)
-        parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
-        parser.add_argument('--image_path', type=str, default="hello.png")
-        parser.add_argument('--code_dir', type=str, default=default_code_dir)
-        parser.add_argument('--conversation_dir', type=str, default=default_conversation_dir)
+        
+        parser.add_argument('--max_tokens', type=int, 
+                            help="Maximum number of tokens to generate.", default=4096)
+        parser.add_argument('--logprobs', type=int, 
+                            help="Include log probabilities in the output, up to the specified number of tokens.", default=0)
+
         parser.add_argument('--cmd_dir', type=str, default=default_cmd_dir)
+        parser.add_argument('--exec_dir', type=str, default=default_exec_dir)
+        parser.add_argument('--ll_dir', type=str, default=default_ll_dir)
+
+        parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
 
         argcomplete.autocomplete(parser)
 
@@ -107,8 +119,7 @@ def main():
     
     Colors.print_header()
 
-    user = os.getenv('USER')
-    greeting = f"Hello {user}! You are using model {args.model}. Type 'help' for available commands."
+    greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
 
     command_map = setup_command_shortcuts(plugins)

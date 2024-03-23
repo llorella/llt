@@ -9,13 +9,13 @@ class Message(TypedDict):
     content: any
 
 def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    (ll_file, conversation_dir) = (args.ll_file, args.conversation_dir)
-    ll_file = path_input(ll_file, conversation_dir)
+    (ll_file, ll_dir) = (args.ll_file, args.ll_dir)
+    ll_file = path_input(ll_file, ll_dir)
     if not ll_file:
         return messages
     args.ll_file = ll_file
 
-    file_path=os.path.join(conversation_dir, ll_file)
+    file_path=os.path.join(ll_dir, ll_file)
     if not os.path.exists(file_path):  
         with open(file_path, 'w') as file:
             json.dump(messages, file, indent=2)
@@ -24,13 +24,13 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
     return messages
    
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    (ll_file, conversation_dir) = (args.ll_file, args.conversation_dir)
-    ll_file = path_input(ll_file, conversation_dir) or ll_file
+    (ll_file, ll_dir) = (args.ll_file, args.ll_dir)
+    ll_file = path_input(ll_file, ll_dir) or ll_file
     if not ll_file:
         return messages
     args.ll_file = ll_file
 
-    file_path=os.path.join(conversation_dir, ll_file)
+    file_path=os.path.join(ll_dir, ll_file)
     with open(file_path, 'w') as file:
         json.dump(messages, file, indent=2) 
     return messages
