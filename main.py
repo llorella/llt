@@ -104,6 +104,12 @@ def init_arguments():
     args = parse_arguments()
     return args
 
+def help_command(messages: list, args: dict) -> list:
+    print("Available commands:")
+    for command, func in plugins.items():
+        print(f"  {command}: {func.__doc__}")
+    return messages
+
 def main():
     args = init_arguments()
     messages = list()
@@ -118,11 +124,12 @@ def main():
         quit_program(messages, args)
     
     Colors.print_header()
-
+    
     greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
 
     command_map = setup_command_shortcuts(plugins)
+    command_map['help'] = help_command
     print_available_commands(command_map)
 
     while True:
