@@ -1,10 +1,14 @@
-import os
+import os, sys
 import pprint
 import readline
 from typing import Optional, Dict
 import json
 
-colors = {
+def quit_program(messages: list, args: dict) -> None:
+    print("Exiting...")
+    sys.exit(0)
+
+colors = {  
     'system': '\033[34m',    # blue
     'user': '\033[32m',      # green
     'assistant': '\033[35m', # magenta

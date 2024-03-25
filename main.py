@@ -1,8 +1,7 @@
 import os
-import sys
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image
-from utils import Colors
+from utils import Colors, quit_program
 
 from api import api_config, full_model_choices
 
@@ -14,10 +13,6 @@ import datetime
 
 # PYTHON_ARGCOMPLETE_OK
 import argcomplete, argparse
-
-def quit_program(messages, args):
-    print("Exiting...")
-    sys.exit(0)
 
 def log_command(command: str, message_before: dict, message_after: dict, args: dict) -> None:
     tokens_before = count_tokens(message_before, args.model) if message_before else 0
@@ -51,6 +46,14 @@ plugins = {
     'append': append_message,
     'xcut': x_message
 }
+
+def help_message(messages: list, args: dict) -> list:
+    print("Available commands:")
+    for command, func in plugins.items():
+        print(f"  {command}: {func}")
+    return messages
+
+plugins.update({'help': help_message})
 
 def init_arguments():
     llt_path = os.getenv('LLT_PATH') or exit("LLT_PATH environment variable not set.")
@@ -104,12 +107,6 @@ def init_arguments():
     args = parse_arguments()
     return args
 
-def help_command(messages: list, args: dict) -> list:
-    print("Available commands:")
-    for command, func in plugins.items():
-        print(f"  {command}: {func}")
-    return messages
-
 def main():
     args = init_arguments()
     messages = list()
@@ -128,7 +125,7 @@ def main():
     greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
 
-    command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}, 'h': help_command}
+    command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}}
 
     while True:
         cmd = input('llt> ')
