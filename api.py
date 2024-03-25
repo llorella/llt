@@ -82,4 +82,6 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
 
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
-full_model_choices = [f"{provider}-{model}" for provider, models in api_config['models'].items() for model in models for model in models[model]]
+full_model_choices = [f"{model_family}-{model}" for provider in api_config['models'] 
+                      for model_family in api_config['models'][provider] 
+                      for model in api_config['models'][provider][model_family]]
