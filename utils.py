@@ -71,7 +71,7 @@ def get_file_path(args: Optional[Dict]) -> Optional[str]:
     ll_file = path_input(ll_file, ll_dir)
     if not ll_file:
         return None
-    args['ll_file'] = ll_file 
+    args.ll_file = ll_file
 
     file_path = os.path.join(ll_dir, ll_file)
     if not os.path.exists(file_path):
