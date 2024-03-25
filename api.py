@@ -14,6 +14,9 @@ def load_config(path: str):
         return yaml.safe_load(config_file)
 
 api_config = load_config(os.path.join(os.getenv('LLT_PATH'), "config.yaml"))
+full_model_choices = [f"{model_family}-{model}" for provider in api_config['models'] 
+                      for model_family in api_config['models'][provider] 
+                      for model in api_config['models'][provider][model_family]]
 
 def collect_messages(completion_stream):
     collected_messages = []
@@ -29,13 +32,14 @@ def get_start_time():
     return time.time()
 
 def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
-    available_models = api_config['models']
+    providers = api_config['models']
     func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion]}
-    provider = next((provider for provider, models in available_models.items() if args.model in models), None)
-    if provider and provider in func_map:
-        return func_map[provider](messages, args)
-    else:
-        raise ValueError(f"Invalid model: {args.model}")
+    for provider, families in providers.items():
+        full_model_names = [f"{family}-{model}" for family in families for model in families[family]]
+        if args.model in full_model_names and provider in func_map:
+            return func_map[provider](messages, args)
+                
+    raise ValueError(f"Invalid model: {args.model}")
 
 def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
     start_time = get_start_time()
@@ -82,6 +86,3 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
 
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
-full_model_choices = [f"{model_family}-{model}" for provider in api_config['models'] 
-                      for model_family in api_config['models'][provider] 
-                      for model in api_config['models'][provider][model_family]]
