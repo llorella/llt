@@ -2,7 +2,6 @@ import os
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image
 from utils import Colors, quit_program
-from sequencing import sequence_messages
 
 from api import api_config, full_model_choices
 
@@ -28,8 +27,7 @@ plugins = {
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
-    'xcut': x_message,
-    'sequence': sequence_messages
+    'xcut': x_message
 }
 
 def init_arguments():
