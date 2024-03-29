@@ -69,6 +69,15 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
     return [block for block in code_blocks if block["code"].strip()]
 
+def previous_message_content_edit(messages: list[Message], args: dict):
+    if not messages:
+        msg = Message(role="user", content="# This message should be edited.")
+        messages.append(msg)
+    save_or_edit_code_block("tmp.txt", messages[-1]['content'], "vim")
+    with open("tmp.txt", "r") as content:
+        messages[-1]['content'] = content.read()
+    return messages
+
 def edit_message(messages: list[Message], args: dict) -> list[Message]:    
     print(f"Exec directory: {args.exec_dir}")
     edit_directory = path_input(None, args.exec_dir) or create_directory_for_file(args.exec_dir, args.ll_file)
