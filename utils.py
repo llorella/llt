@@ -5,7 +5,9 @@ from typing import Optional, Dict
 import json
 
 def quit_program(messages: list, args: dict) -> None:
-    print("Exiting...")
+    import pyperclip
+    pyperclip.copy(args.ll_file)
+    print(f"Exiting from {args.ll_file}, (copied to clipboard)...")
     sys.exit(0)
 
 colors = {  

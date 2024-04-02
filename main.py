@@ -9,6 +9,7 @@ from message import load_message, write_message, view_message, new_message, prom
 from editor import edit_message, include_file, attach_image, previous_message_content_edit
 from utils import Colors, quit_program, count_tokens
 from api import api_config, full_model_choices
+from logcmd_llt_branch_1 import undo_last_git_commit, search_messages, export_messages_to_markdown
 
 plugins = {
     'load': load_message,
@@ -102,12 +103,14 @@ def main() -> None:
     greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
 
-    command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}, 'help': help_message}
-
-    test_command = "prev_edit"
-    command_map[test_command] = previous_message_content_edit
-    command_map[test_command[0]] = previous_message_content_edit
-
+    command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}}           #'seq': sequence_messages,
+    test_commands = {'h': help_message, 
+                     'md': export_messages_to_markdown, 
+                     "p": previous_message_content_edit, 
+                     's': search_messages, 
+                     'u': undo_last_git_commit}
+    command_map.update(test_commands)
+    
     while True:
         try:
             cmd = input('llt> ')
