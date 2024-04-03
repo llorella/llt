@@ -5,14 +5,12 @@ import base64
 from message import Message
 from utils import path_input, content_input
 
-
 def list_files(dir_path):
     return [
         f for f in os.listdir(dir_path) if os.path.isfile(
             os.path.join(
                 dir_path,
                 f))]
-
 
 def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
     name = os.path.basename(ll_file)
@@ -22,7 +20,6 @@ def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
     os.makedirs(new_dir_path, exist_ok=True)
     return new_dir_path
 
-
 def copy_to_clipboard(text: str) -> None:
     try:
         import pyperclip
@@ -31,7 +28,6 @@ def copy_to_clipboard(text: str) -> None:
     except ImportError:
         print("pyperclip module not found. Skipping clipboard functionality.")
 
-
 def save_or_edit_code_block(filename: str, code: str, editor: str) -> None:
     if editor:
         copy_to_clipboard(code)
@@ -39,7 +35,6 @@ def save_or_edit_code_block(filename: str, code: str, editor: str) -> None:
     else:
         with open(filename, 'w') as file:
             file.write(code.strip())
-
 
 def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
     print(f"File: {code_block['filename']}")
@@ -61,7 +56,6 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
         return f"{filename} changed."
     elif action == 's':
         return "Skipped."
-
 
 def extract_code_blocks(markdown_text: str) -> list[dict]:
     code_blocks = []
@@ -100,7 +94,6 @@ def previous_message_content_edit(messages: list[Message], args: dict):
         messages[-1]['content'] = content.read()
     return messages
 
-
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
     print(f"Exec directory: {args.exec_dir}")
     edit_directory = path_input(
@@ -115,7 +108,6 @@ def edit_message(messages: list[Message], args: dict) -> list[Message]:
     messages.append({'role': 'user', 'content': '\n'.join(new_results)})
     return messages
 
-
 def include_file(messages: list[Message], args: dict) -> list[Message]:
     file_path = os.path.expanduser(path_input(args.file_include))
     with open(file_path, 'r') as file:
@@ -123,11 +115,9 @@ def include_file(messages: list[Message], args: dict) -> list[Message]:
     messages.append({'role': 'user', 'content': data})
     return messages
 
-
 def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode()
-
 
 def attach_image(messages: list[Message], args: dict) -> list[Message]:
     base64_image = encode_image(path_input(args.image_path))
