@@ -8,7 +8,7 @@ from typing import List, Dict
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, attach_image, previous_message_content_edit
 from utils import Colors, quit_program, count_tokens
-from api import api_config, full_model_choices
+from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import undo_last_git_commit, search_messages, export_messages_to_markdown
 
 plugins = {
@@ -107,8 +107,10 @@ def main() -> None:
     test_commands = {'h': help_message, 
                      'md': export_messages_to_markdown, 
                      "p": previous_message_content_edit, 
-                     's': search_messages, 
-                     'u': undo_last_git_commit}
+                     's': search_messages,
+                     'sc': save_config,
+                     'uc': update_config
+                     }
     command_map.update(test_commands)
     
     while True:

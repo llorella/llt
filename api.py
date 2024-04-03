@@ -9,6 +9,47 @@ openai_client = OpenAI()
 mistral_client = MistralClient()
 anthropic_client = anthropic.Client()
 
+def save_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+    config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
+    if config_path.lower() == 'exit':
+        print("Config save canceled.")
+        return messages
+    
+    with open(config_path, 'w') as config_file:
+        yaml.dump(vars(args), config_file, default_flow_style=False)
+    print(f"Config saved to {config_path}")
+    return messages
+
+def update_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+    print("Current config:")
+    for arg in vars(args):
+        print(f"{arg}: {getattr(args, arg)}")
+    
+    try:
+        key = input("Enter the name of the config option to update (or 'exit' to cancel): ")
+        if key.lower() == 'exit':
+            print("Config update canceled.")
+            return messages
+        if not hasattr(args, key):
+            print(f"Config {key} does not exist.")
+            return messages
+        current_value = getattr(args, key)
+        print(f"Current value for {key}: {current_value}")
+        new_value = input(f"Enter new value for {key} (or 'exit' to cancel): ")
+        if new_value.lower() == 'exit':
+            print("Config update canceled.")
+            return messages
+
+        casted_value = type(current_value)(new_value)
+        setattr(args, key, casted_value)
+        print(f"Config updated: {key} = {casted_value}")
+    except ValueError as e:
+        print(f"Invalid value provided. Error: {e}")
+    except Exception as e:
+        print(f"An error occurred while updating the configuration. Error: {e}")
+    
+    return messages
+
 def load_config(path: str):
     with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
