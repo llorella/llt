@@ -12,9 +12,9 @@ llt is a UNIX-like terminal application that allows users to interact with a lan
    cd llt
    ```
 
-3. Set up a virtual environment (optional but recommended):
+3. Set up a virtual environment (optional, will be replaced with a better method):
    ```
-   python3 -m venv venv
+   python3 -m venv .env
    source venv/bin/activate 
    ```
 
@@ -23,7 +23,7 @@ llt is a UNIX-like terminal application that allows users to interact with a lan
    pip install -r requirements.txt
    ```
 
-5. Set the `LLT_PATH` environment variable for llt data directory. 
+5. Set the `LLT_PATH` environment variable for the llt data directory. 
    ```
    export LLT_PATH=$HOME/.llt
    ```
@@ -43,7 +43,7 @@ usage: main.py [-h] [--ll_file LL_FILE] [--file_include FILE_INCLUDE] [--prompt 
                [--cmd_dir CMD_DIR] [--exec_dir EXEC_DIR] [--ll_dir LL_DIR]
                [--non_interactive]
 
-llt, the little language terminal
+llt, little language tool and terminal 
 
 options:
   -h, --help            show this help message and exit
@@ -57,26 +57,21 @@ options:
   --model MODEL, -m MODEL
                         Specify model.
   --temperature TEMPERATURE, -t TEMPERATURE
+
                         Specify temperature.
   --non_interactive, -n
                         Run in non-interactive mode.
+
   --image_path IMAGE_PATH
-  --cmd_dir CMD_DIR
+                        Specify the path to an image file.
+  --cmd_dir 
+                        Specify the command history directory (default: `commands`).
   --exec_dir EXEC_DIR
+                        Specify the root directory for execution files (default: `exec`).
   --ll_dir LL_DIR
+                        Specify the directory for message history (default: `msg`).
 ```
 
-- `--ll_file, -l`: Specify the filename for message history (default: `out.ll`).
-- `--file_include, -f`: Submit an optional prompt file (default: empty).
-- `--prompt, -p`: Preload user message with input string.
-- `--role, -r`: Specify the user's role (default: `user`).
-- `--model, -m`: Specify the model to use from available options (default: `gpt-4`).
-- `--temperature, -t`: Specify the temperature for text generation (default: `0.9`).
-- `--non_interactive, -n`: Run in non-interactive mode.
-- `--image_path`: Specify the path to an image file.
-- `--cmd_dir`: Specify the command history directory (default: `commands`).
-- `--exec_dir`: Specify the root directory for execution files (default: `exec`).
-- `--ll_dir`: Specify the directory for message history (default: `msg`).
 
 
 ### Commands and Examples:
