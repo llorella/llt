@@ -57,26 +57,12 @@ def path_completer(text, state):
         return [text + os.path.sep][state]
     return [x for x in os.listdir(os.path.dirname(text)) if x.startswith(os.path.basename(text))][state]
     
-def path_input(default_file: str = None, exec_dir: str = None) -> str:
+def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer_delims(' \t\n;')
     readline.parse_and_bind("tab: complete")
-    readline.set_completer(directory_completer(exec_dir) if dir else path_completer)
+    readline.set_completer(directory_completer(root_dir) if root_dir else path_completer)
     file_path = input(f"Enter file path (default is {default_file}): ")
-    print(f"Path: {os.path.expanduser(file_path)}")
-    return os.path.expanduser(file_path) if file_path else default_file
-
-def get_file_path(args: Optional[Dict]) -> Optional[str]:
-    ll_file, ll_dir = args.ll_file, args.ll_dir
-    ll_file = path_input(ll_file, ll_dir)
-    if not ll_file:
-        return None
-    args.ll_file = ll_file
-
-    file_path = os.path.join(ll_dir, ll_file)
-    if not os.path.exists(file_path):
-        with open(file_path, 'w') as file:
-            json.dump([], file, indent=2)  
-    return file_path
+    return os.path.join(root_dir, os.path.expanduser(file_path) if file_path else default_file)
 
 import tiktoken
 def count_tokens(message, model):

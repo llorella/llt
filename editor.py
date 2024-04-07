@@ -12,14 +12,8 @@ def list_files(dir_path):
                 dir_path,
                 f))]
 
-def create_directory_for_file(exec_dir: str, ll_file: str) -> str:
-    name = os.path.basename(ll_file)
-    # dir name is the same as the file name without the .ll extension
-    dir_name = os.path.splitext(name)[0]
-    new_dir_path = os.path.join(exec_dir, dir_name)
-    os.makedirs(new_dir_path, exist_ok=True)
-    return new_dir_path
-
+def create_directory_for_file(file_path: str) -> str:
+    os.makedirs(os.path.dirname(file_path), exist_ok=True)
 def copy_to_clipboard(text: str) -> None:
     try:
         import pyperclip
@@ -47,7 +41,7 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
             dir_path,
             path_input(
                 code_block['filename'],
-                dir_path) or code_block['filename'])
+                dir_path))
         os.makedirs(os.path.dirname(filename), exist_ok=True)
         save_or_edit_code_block(
             filename,
@@ -95,15 +89,16 @@ def previous_message_content_edit(messages: list[Message], args: dict):
     return messages
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
-    print(f"Exec directory: {args.exec_dir}")
-    edit_directory = path_input(
-        None, args.exec_dir) or create_directory_for_file(
-        args.exec_dir, args.ll_file)
+    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll_file)[0])
+    exec_dir = path_input(default_exec_dir, args.exec_dir)
+    print(f"Exec directory: {exec_dir}")
+    os.makedirs(default_exec_dir, exist_ok=True)
+
     code_blocks = extract_code_blocks(messages[-1]['content'])
     new_results = [
         handle_code_block(
             code_block,
-            edit_directory,
+            default_exec_dir,
             "vim") for code_block in code_blocks]
     messages.append({'role': 'user', 'content': '\n'.join(new_results)})
     return messages

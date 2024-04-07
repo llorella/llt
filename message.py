@@ -2,32 +2,32 @@ import os
 import json
 from typing import Optional, TypedDict, Dict, List, Type, Tuple
 from api import get_completion
-from utils import content_input, get_file_path, colors
+from utils import content_input, path_input, colors
 
 class Message(TypedDict):
     role: str
     content: any
 
 def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    file_path = get_file_path(args)
-    if not file_path:
+    ll_path = path_input(args.ll_file, args.ll_dir)
+    print(f"Loading messages from {ll_path}")
+    if not os.path.exists(ll_path):
+        with open(ll_path, 'w') as file:
+            json.dump([], file, indent=2)
         return messages
-
-    with open(file_path, 'r') as file:
+    with open(ll_path, 'r') as file:
         messages.extend(json.load(file))
     return messages
 
 def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    file_path = get_file_path(args)
-    if not file_path:
-        return messages
-
-    with open(file_path, 'w') as file:
+    ll_path = path_input(args.ll_file, args.ll_dir)
+    print(f"Writing messages to {ll_path}")
+    with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
     return messages
 
 def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    message = Message(role=args.role , content=content_input())
+    message = Message(role=args.role, content=content_input())
     messages.append(message)
     return messages
 
@@ -56,7 +56,6 @@ def view_message(messages: List[Message], args: Optional[Dict] = None) -> List[M
     for msg in messages:
         role, content = msg['role'], msg['content']
         color = colors.get(role, colors['reset'])  
-
         try:
             content_lines = content.split('\n')
             if content_lines:
