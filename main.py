@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 import os
 import json
 import datetime
@@ -52,6 +53,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['ll_dir']))
 
     parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
+    parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
 
     argcomplete.autocomplete(parser)
     return parser.parse_args()
@@ -90,12 +92,15 @@ def main() -> None:
     messages = list()
     if args.ll_file:
         messages = load_message(messages, args)
+    if args.detach:
+        messages = detach_message(messages, args)
     if args.file_include:
         messages = include_file(messages, args)
     if args.prompt:
         messages.append({'role': 'user', 'content': args.prompt})
     if args.non_interactive:
         messages = prompt_message(messages, args)
+        if args.ll_file: write_message(messages, args)
         quit_program(messages, args)
     
     Colors.print_header()

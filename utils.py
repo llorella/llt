@@ -5,8 +5,6 @@ from typing import Optional, Dict
 import json
 
 def quit_program(messages: list, args: dict) -> None:
-    from editor import copy_to_clipboard
-    copy_to_clipboard(args.ll_file)
     sys.exit(0)
 
 colors = {  
@@ -52,7 +50,7 @@ def directory_completer(dir_path):
     return completer
 
 def path_completer(text, state):
-    line = readline.get_line_buffer().split()
+    readline.get_line_buffer().split()
     if '~' in text:
         text = os.path.expanduser('~') + text[1:]
     if os.path.isdir(text) and not text.endswith(os.path.sep):
