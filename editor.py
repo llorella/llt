@@ -101,7 +101,7 @@ def edit_message(messages: list[Message], args: dict) -> list[Message]:
     return messages
 
 def include_file(messages: list[Message], args: dict) -> list[Message]:
-    file_path = os.path.expanduser(path_input(args.file_include)) if not args.non_interactive\
+    file_path = os.path.expanduser(path_input(args.file_include, args.exec_dir)) if not args.non_interactive\
         else args.file_include
     with open(file_path, 'r') as file:
         data = file.read()
