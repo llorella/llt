@@ -12,8 +12,6 @@ def list_files(dir_path):
                 dir_path,
                 f))]
 
-def create_directory_for_file(file_path: str) -> str:
-    os.makedirs(os.path.dirname(file_path), exist_ok=True)
 def copy_to_clipboard(text: str) -> None:
     try:
         import pyperclip
@@ -78,7 +76,6 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
     return [block for block in code_blocks if block["code"].strip()]
 
-
 def previous_message_content_edit(messages: list[Message], args: dict):
     if not messages:
         msg = Message(role="user", content="# This message should be edited.")
@@ -90,21 +87,22 @@ def previous_message_content_edit(messages: list[Message], args: dict):
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
     default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll_file)[0])
-    exec_dir = path_input(default_exec_dir, args.exec_dir)
-    print(f"Exec directory: {exec_dir}")
     os.makedirs(default_exec_dir, exist_ok=True)
-
+    exec_dir = path_input(default_exec_dir, args.exec_dir) if not args.non_interactive\
+        else default_exec_dir
+    print(f"Using exec directory: {os.path.basename(exec_dir)}")
     code_blocks = extract_code_blocks(messages[-1]['content'])
     new_results = [
         handle_code_block(
             code_block,
-            default_exec_dir,
+            exec_dir,
             "vim") for code_block in code_blocks]
     messages.append({'role': 'user', 'content': '\n'.join(new_results)})
     return messages
 
 def include_file(messages: list[Message], args: dict) -> list[Message]:
-    file_path = os.path.expanduser(path_input(args.file_include)) if not args.non_interactive else args.file_include
+    file_path = os.path.expanduser(path_input(args.file_include)) if not args.non_interactive\
+        else args.file_include
     with open(file_path, 'r') as file:
         data = file.read()
     messages.append({'role': 'user', 'content': data})
