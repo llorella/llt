@@ -1,11 +1,13 @@
 import os, sys
 import pprint
 import readline
-from typing import Optional, Dict
-import json
+import base64
+import tiktoken
+from PIL import Image
+from math import ceil
+
 
 def quit_program(messages: list, args: dict) -> None:
-    print("Exiting...")
     sys.exit(0)
 
 colors = {  
@@ -41,7 +43,8 @@ def input_role(role: str) -> str:
     return input(f"Enter role(default is {role}): ") or role
 
 def content_input() -> str:
-    return input("Enter content: ")
+    return input("Enter content below.\n")
+    Colors.print_colored("*********************************************************", Colors.YELLOW)
 
 def directory_completer(dir_path):
     def completer(text, state):
@@ -51,37 +54,88 @@ def directory_completer(dir_path):
     return completer
 
 def path_completer(text, state):
-    line = readline.get_line_buffer().split()
+    readline.get_line_buffer().split()
     if '~' in text:
         text = os.path.expanduser('~') + text[1:]
     if os.path.isdir(text) and not text.endswith(os.path.sep):
         return [text + os.path.sep][state]
     return [x for x in os.listdir(os.path.dirname(text)) if x.startswith(os.path.basename(text))][state]
     
-def path_input(default_file: str = None, exec_dir: str = None) -> str:
+def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer_delims(' \t\n;')
     readline.parse_and_bind("tab: complete")
-    readline.set_completer(directory_completer(exec_dir) if dir else path_completer)
+    readline.set_completer(directory_completer(root_dir) if root_dir else path_completer)
     file_path = input(f"Enter file path (default is {default_file}): ")
-    print(f"Path: {os.path.expanduser(file_path)}")
-    return os.path.expanduser(file_path) if file_path else default_file
+    return os.path.join(root_dir if root_dir else os.getcwd(), os.path.expanduser(file_path) if file_path else default_file)
 
-def get_file_path(args: Optional[Dict]) -> Optional[str]:
-    ll_file, ll_dir = args.ll_file, args.ll_dir
-    ll_file = path_input(ll_file, ll_dir)
-    if not ll_file:
-        return None
-    args.ll_file = ll_file
+def count_image_tokens(file_path: str) -> int:
+    def resize(width, height):
+        if width > 1024 or height > 1024:
+            if width > height:
+                height = int(height * 1024 / width)
+                width = 1024
+            else:
+                width = int(width * 1024 / height)
+                height = 1024
+        return width, height
+    
+    def count_image_tokens(width: int, height: int):
+        width, height = resize(width, height)
+        h = ceil(height / 512)
+        w = ceil(width / 512)
+        total = 85 + 170 * h * w
+        return total
+    
+    with Image.open(file_path) as image:
+        width, height = image.size
+        return count_image_tokens(width, height)
+    
+supported_images = ['.png', '.jpg', '.jpeg']
 
-    file_path = os.path.join(ll_dir, ll_file)
-    if not os.path.exists(file_path):
-        with open(file_path, 'w') as file:
-            json.dump([], file, indent=2)  
-    return file_path
+def is_base64(text):
+    try:
+        base64.b64decode(text)
+        return True
+    except:
+        return False
 
-import tiktoken
-def count_tokens(message, model):
-    model = "gpt-4" # todo: add support for other models
-    encoding = tiktoken.encoding_for_model(model)
-    num_tokens = 4 + len(encoding.encode(message['content']))
+def count_tokens(message: dict, args: dict) -> int:
+    num_tokens, content = 0, ""
+    if type(message['content']) == list:
+        for i in range(len(message['content'])):
+            if message['content'][i]['type'] == 'text':
+                text = message['content'][i]['text']
+                content+=text
+            elif message['content'][i]['type'] == 'image_url':
+                if (os.path.splitext(args.file_include)[1] in supported_images)\
+                and is_base64(message['content'][i]['image_url']['url']):
+                    num_tokens += count_image_tokens(os.path.expanduser(args.file_include))
+                    print(f"Image tokens: {num_tokens}")
+    else:
+        content+=message['content']
+
+    encoding = tiktoken.encoding_for_model("gpt-4")
+    num_tokens += 4 + len(encoding.encode(content))
+    print(f"Tokens: {num_tokens}")
     return num_tokens
+
+def encode_image(image_path: str) -> str:
+    with open(image_path, "rb") as image_file:
+                return base64.b64encode(image_file.read()).decode('utf-8')
+
+language_extension_map = {
+    'python': '.py',
+    'shell': '.sh',
+    'text': '.txt',
+    'markdown': '.md',
+    'html': '.html',
+    'css': '.css',
+    'javascript': '.js',
+    'json': '.json',
+    'yaml': '.yaml',
+    'c': '.c',
+    'cpp': '.cpp',
+    'rust': '.rs',
+}
+
+inverse_kv_map = lambda d: {v: k for k, v in d.items()}
