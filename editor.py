@@ -3,7 +3,7 @@ import subprocess
 import base64
 
 from message import Message
-from utils import path_input, content_input
+from utils import path_input, content_input, language_extension_map, inverse_kv_map, encode_image, supported_images
 
 def list_files(dir_path):
     return [
@@ -76,13 +76,18 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
     return [block for block in code_blocks if block["code"].strip()]
 
+temp_file = "tmp.txt"
+
 def previous_message_content_edit(messages: list[Message], args: dict):
+    if (os.path.exists(temp_file)):
+        os.truncate(temp_file)
     if not messages:
         msg = Message(role="user", content="# This message should be edited.")
         messages.append(msg)
-    save_or_edit_code_block("tmp.txt", messages[-1]['content'], "vim")
-    with open("tmp.txt", "r") as content:
+    save_or_edit_code_block(temp_file, messages[-1]['content'], "vim")
+    with open(temp_file, "r") as content:
         messages[-1]['content'] = content.read()
+    os.close(temp_file)  
     return messages
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
@@ -103,17 +108,16 @@ def edit_message(messages: list[Message], args: dict) -> list[Message]:
 def include_file(messages: list[Message], args: dict) -> list[Message]:
     file_path = os.path.expanduser(path_input(args.file_include, args.exec_dir)) if not args.non_interactive\
         else args.file_include
-    with open(file_path, 'r') as file:
-        data = file.read()
-    messages.append({'role': 'user', 'content': data})
-    return messages
-
-def encode_image(image_path: str) -> str:
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode()
-
-def attach_image(messages: list[Message], args: dict) -> list[Message]:
-    base64_image = encode_image(path_input(args.image_path))
-    messages.append({"role": "user", "content": [{"type": "text", "text": content_input()}, {
-                    "type": "image_url", "image_url": {"url": f"{encode_image(args.image_path)}"}}]})
-    return messages
+    (root, ext) = os.path.splitext(file_path)
+    print(f"File extension: {ext.removeprefix('.')}")
+    print(f"Root: {root}")
+    print(f"File path: {file_path}")
+    if ext == '.png' or ext == '.jpg' or ext == '.jpeg':
+        print(f"Attaching image: {file_path}")
+        messages.append({"role": "user", "content": [{"type": "text", "text": content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]})
+        return messages
+    else:
+        with open(file_path, 'r') as file:
+            data = file.read()
+        messages.append({'role': 'user', 'content': f"```{inverse_kv_map(language_extension_map)[ext.lower()] if ext else ''}\n{data}\n```"})
+        return messages

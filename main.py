@@ -7,7 +7,7 @@ import argparse
 from typing import List, Dict
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
-from editor import edit_message, include_file, attach_image, previous_message_content_edit
+from editor import edit_message, include_file, previous_message_content_edit
 from utils import Colors, quit_program, count_tokens
 from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import undo_last_git_commit, search_messages, export_messages_to_markdown
@@ -21,7 +21,6 @@ plugins = {
     'edit': edit_message,
     'file': include_file,
     'quit': quit_program,
-    'image': attach_image,
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
@@ -63,8 +62,8 @@ def init_directories(args: argparse.Namespace) -> None:
         os.makedirs(directory, exist_ok=True)
 
 def log_command(command: str, message_before: Dict, message_after: Dict, args: argparse.Namespace) -> None:
-    tokens_before = count_tokens(message_before, args.model) if message_before else 0
-    tokens_after = count_tokens(message_after, args.model) if message_after else 0
+    tokens_before = count_tokens(message_before, args) if message_before else 0
+    tokens_after = count_tokens(message_after, args) if message_after else 0
     token_delta = tokens_after - tokens_before
     log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log")
     with open(log_path, 'a') as logfile:
@@ -132,6 +131,8 @@ def main() -> None:
             break
         except Exception as e:
             print(f"An error occurred: {e}")
+            import traceback
+            print(traceback.format_exc())
 
 if __name__ == "__main__":
     main()
