@@ -60,7 +60,6 @@ full_model_choices = [f"{model_family}-{model}" for provider in api_config['mode
                       for model in api_config['models'][provider][model_family]]
 
 def collect_messages(completion_stream: dict):
-    print(type(completion_stream))
     role, collected_messages = "assistant",[]
     for chunk in completion_stream:
         chunk_message = chunk.choices[0].delta.content

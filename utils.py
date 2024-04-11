@@ -110,7 +110,6 @@ def count_tokens(message: dict, args: dict) -> int:
                 if (os.path.splitext(args.file_include)[1] in supported_images)\
                 and is_base64(message['content'][i]['image_url']['url']):
                     num_tokens += count_image_tokens(os.path.expanduser(args.file_include))
-                    print(f"Image path: {os.path.expanduser(args.file_include)}")
                     print(f"Image tokens: {num_tokens}")
     else:
         content+=message['content']

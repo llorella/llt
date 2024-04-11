@@ -109,12 +109,9 @@ def include_file(messages: list[Message], args: dict) -> list[Message]:
     file_path = os.path.expanduser(path_input(args.file_include, args.exec_dir)) if not args.non_interactive\
         else args.file_include
     (root, ext) = os.path.splitext(file_path)
-    print(f"File extension: {ext.removeprefix('.')}")
-    print(f"Root: {root}")
-    print(f"File path: {file_path}")
     if ext == '.png' or ext == '.jpg' or ext == '.jpeg':
         print(f"Attaching image: {file_path}")
-        messages.append({"role": "user", "content": [{"type": "text", "text": content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]})
+        messages.append({"role": "user", "content": [{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]})
         return messages
     else:
         with open(file_path, 'r') as file:
