@@ -6,7 +6,6 @@ import tiktoken
 from PIL import Image
 from math import ceil
 
-
 def quit_program(messages: list, args: dict) -> None:
     sys.exit(0)
 
@@ -43,8 +42,11 @@ def input_role(role: str) -> str:
     return input(f"Enter role(default is {role}): ") or role
 
 def content_input() -> str:
-    return input("Enter content below.\n")
+    print("Enter content below.")
     Colors.print_colored("*********************************************************", Colors.YELLOW)
+    content = input("> ") or ""
+    Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
+    return content
 
 def directory_completer(dir_path):
     def completer(text, state):

@@ -13,6 +13,7 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
         else os.path.join(args.ll_dir, args.ll_file)
     print(f"Loading messages from {os.path.basename(ll_path)}")
     if not os.path.exists(ll_path):
+        os.makedirs(os.path.dirname(ll_path), exist_ok=True)
         with open(ll_path, 'w') as file:
             json.dump([], file, indent=2)
     with open(ll_path, 'r') as file:
