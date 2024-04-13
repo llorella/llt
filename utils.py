@@ -100,6 +100,27 @@ def is_base64(text):
         return True
     except:
         return False
+    
+def tokenize(messages: list[dict[str, any]], args: dict) -> int:
+    num_tokens, content = 0, ""
+    for message in messages:
+        if type(message['content']) == list:
+            for i in range(len(message['content'])):
+                if message['content'][i]['type'] == 'text':
+                    text = message['content'][i]['text']
+                    content+=text
+                elif message['content'][i]['type'] == 'image_url':
+                    if (os.path.splitext(args.file_include)[1] in supported_images)\
+                    and is_base64(message['content'][i]['image_url']['url']):
+                        num_tokens += count_image_tokens(os.path.expanduser(args.file_include))
+                        print(f"Image tokens: {num_tokens}")
+        else:
+            content+=message['content']
+    encoding = tiktoken.encoding_for_model("gpt-4")
+    num_tokens += 4 + len(encoding.encode(content))
+    print(f"Tokens: {num_tokens}")
+    return num_tokens
+     
 
 def count_tokens(message: dict, args: dict) -> int:
     num_tokens, content = 0, ""

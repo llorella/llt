@@ -8,7 +8,7 @@ from typing import List, Dict
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
 from editor import edit_message, include_file, previous_message_content_edit
-from utils import Colors, quit_program, count_tokens
+from utils import Colors, quit_program, count_tokens, tokenize
 from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import undo_last_git_commit, search_messages, export_messages_to_markdown
 
@@ -46,6 +46,7 @@ def parse_arguments() -> argparse.Namespace:
     
     parser.add_argument('--max_tokens', type=int, help="Maximum number of tokens to generate.", default=4096)
     parser.add_argument('--logprobs', type=int, help="Include log probabilities in the output, up to the specified number of tokens.", default=0)
+    parser.add_argument('--top_p', type=float, help="Sample from top P tokens.", default=1.0)
 
     parser.add_argument('--cmd_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['cmd_dir']))
     parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['exec_dir']))
@@ -61,21 +62,18 @@ def init_directories(args: argparse.Namespace) -> None:
     for directory in [args.ll_dir, args.exec_dir, args.cmd_dir]:
         os.makedirs(directory, exist_ok=True)
 
-def log_command(command: str, message_before: Dict, message_after: Dict, args: argparse.Namespace) -> None:
-    tokens_before = count_tokens(message_before, args) if message_before else 0
-    tokens_after = count_tokens(message_after, args) if message_after else 0
-    token_delta = tokens_after - tokens_before
-    log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log")
+def log_command(command: str, messages: list, args: dict) -> None:
+    tokens = tokenize(messages, args) if messages else 0
+    log_path = os.path.join(args['cmd_dir'], os.path.splitext(args['ll_file'])[0] + ".log")
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(message_before, indent=2)}\n")  
-        logfile.write(f"model: {args.model}\n")  
+        logfile.write(f"before_command: {json.dumps(messages[:-1], indent=2)}\n")  
+        logfile.write(f"args: {json.dumps(messages[:-1], indent=2)}\n")
         logfile.write(f"command: {command}\n")
-        logfile.write(f"after_command: {json.dumps(message_after, indent=2)}\n")
-        logfile.write(f"tokens_before: {tokens_before}\n")
-        logfile.write(f"tokens_after: {tokens_after}\n")
-        logfile.write(f"token_delta: {token_delta}\n")
+        logfile.write(f"input: TO IMPLEMENT\n")
+        logfile.write(f"after_command: {json.dumps(messages[-1], indent=2)}\n")
+        logfile.write(f"tokens: {tokens}\n")
         logfile.write(f"COMMAND_END\n\n")
 
 def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
@@ -83,6 +81,13 @@ def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
     for command, func in plugins.items():
         print(f"  {command}: {func}")
     return messages
+
+test_commands = {'h': help_message, 
+                'md': export_messages_to_markdown, 
+                "p": previous_message_content_edit, 
+                's': search_messages,
+                'sc': save_config,
+                'uc': update_config}
 
 def main() -> None:
     args = parse_arguments()
@@ -108,24 +113,15 @@ def main() -> None:
     print(f"{greeting}\n")
 
     command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}}           #'seq': sequence_messages,
-    test_commands = {'h': help_message, 
-                     'md': export_messages_to_markdown, 
-                     "p": previous_message_content_edit, 
-                     's': search_messages,
-                     'sc': save_config,
-                     'uc': update_config
-                     }
     command_map.update(test_commands)
-    
     while True:
         try:
             cmd = input('llt> ')
             if cmd in command_map:
-                message_before = messages[-1] if messages else {}
                 messages = command_map[cmd](messages, args)
-                log_command(cmd, message_before, messages[-1] if messages else {}, args)
+                if not cmd.startswith('v'): log_command(cmd, messages, vars(args))
             else:
-                print("Unknown command.")
+                messages.append({'role': args.role, 'content': f"{cmd}"})
         except KeyboardInterrupt:
             print("\nExiting...")
             break

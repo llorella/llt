@@ -80,14 +80,14 @@ temp_file = "tmp.txt"
 
 def previous_message_content_edit(messages: list[Message], args: dict):
     if (os.path.exists(temp_file)):
-        os.truncate(temp_file)
+        os.truncate(temp_file, 0)
     if not messages:
         msg = Message(role="user", content="# This message should be edited.")
         messages.append(msg)
     save_or_edit_code_block(temp_file, messages[-1]['content'], "vim")
     with open(temp_file, "r") as content:
         messages[-1]['content'] = content.read()
-    os.close(temp_file)  
+    os.close(content)  
     return messages
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
@@ -106,7 +106,7 @@ def edit_message(messages: list[Message], args: dict) -> list[Message]:
     return messages
 
 def include_file(messages: list[Message], args: dict) -> list[Message]:
-    file_path = os.path.expanduser(path_input(args.file_include, args.exec_dir)) if not args.non_interactive\
+    file_path = os.path.expanduser(path_input(args.file_include, os.getcwd())) if not args.non_interactive\
         else args.file_include
     (root, ext) = os.path.splitext(file_path)
     if ext == '.png' or ext == '.jpg' or ext == '.jpeg':

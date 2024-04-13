@@ -1,6 +1,6 @@
 import os
 import json
-from typing import Optional, TypedDict, Dict, List, Type, Tuple
+from typing import Optional, TypedDict, Dict, List
 from api import get_completion
 from utils import content_input, path_input, colors
 
