@@ -72,7 +72,10 @@ def view_message(messages: List[Message], args: Optional[Dict] = None) -> List[M
 
 def x_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     values = input("Enter values to cut: ").split(',')
-    #can be integers or ranges of signed integers
-    start = int(values[0]) - 1
-    end = int(values[1]) if len(values) > 1 else start + 1
-    return messages[start:end]
+    user_input = input(f"Cutting messages {start} to {end}. Proceed? (Any key for yes, Ctrl+C or None to cancel): ")
+    if user_input:
+        start = int(values[0]) - 1
+        end = int(values[1]) if len(values) > 1 else start + 1
+        return messages[start:end]
+    else:
+        return messages

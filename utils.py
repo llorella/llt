@@ -92,8 +92,6 @@ def count_image_tokens(file_path: str) -> int:
         width, height = image.size
         return count_image_tokens(width, height)
     
-supported_images = ['.png', '.jpg', '.jpeg']
-
 def is_base64(text):
     try:
         base64.b64decode(text)
@@ -122,20 +120,22 @@ def tokenize(messages: list[dict[str, any]], args: dict) -> int:
     return num_tokens
      
 
-def count_tokens(message: dict, args: dict) -> int:
+def count_tokens(messages: list[dict[str, any]], args: dict) -> int:
     num_tokens, content = 0, ""
-    if type(message['content']) == list:
-        for i in range(len(message['content'])):
-            if message['content'][i]['type'] == 'text':
-                text = message['content'][i]['text']
-                content+=text
-            elif message['content'][i]['type'] == 'image_url':
-                if (os.path.splitext(args.file_include)[1] in supported_images)\
-                and is_base64(message['content'][i]['image_url']['url']):
-                    num_tokens += count_image_tokens(os.path.expanduser(args.file_include))
-                    print(f"Image tokens: {num_tokens}")
-    else:
-        content+=message['content']
+    for message in messages:
+        msg_content = message['content']
+        if type(msg_content) == list:
+            for i in range(len(msg_content)):
+                if msg_content[i]['type'] == 'text':
+                    text = msg_content[i]['text']
+                    content+=text
+                elif msg_content[i]['type'] == 'image_url':
+                    if (os.path.splitext(args['file_include'])[1] in supported_images)\
+                    and is_base64(msg_content[i]['image_url']['url']):
+                        num_tokens += count_image_tokens(os.path.expanduser(args['file_include']))
+                        print(f"Image tokens: {num_tokens}")
+        else:
+            content+=message['content']
 
     encoding = tiktoken.encoding_for_model("gpt-4")
     num_tokens += 4 + len(encoding.encode(content))
@@ -145,6 +145,14 @@ def count_tokens(message: dict, args: dict) -> int:
 def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
                 return base64.b64encode(image_file.read()).decode('utf-8')
+    
+supported_images = ['.png', '.jpg', '.jpeg']
+
+media_type_map = {
+    'png': 'image/jpeg',
+    'image': 'image/jpeg',
+    'image_url': 'image/jpeg'
+}
 
 language_extension_map = {
     'python': '.py',

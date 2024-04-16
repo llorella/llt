@@ -7,10 +7,10 @@ import argparse
 from typing import List, Dict
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
-from editor import edit_message, include_file, previous_message_content_edit
-from utils import Colors, quit_program, count_tokens, tokenize
+from editor import edit_message, include_file
+from utils import Colors, quit_program, tokenize, count_tokens
 from api import save_config, update_config, api_config, full_model_choices
-from logcmd_llt_branch_1 import undo_last_git_commit, search_messages, export_messages_to_markdown
+from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
 
 plugins = {
     'load': load_message,
@@ -26,6 +26,15 @@ plugins = {
     'append': append_message,
     'xcut': x_message
 }
+
+""" def register_command(name=None, aliases=[]):
+    def decorator(func):
+        func_name = name if name else func.__name__
+        plugins[func_name] = func
+        for alias in aliases:
+            plugins[alias] = func
+        return func
+    return decorator """
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
@@ -63,7 +72,7 @@ def init_directories(args: argparse.Namespace) -> None:
         os.makedirs(directory, exist_ok=True)
 
 def log_command(command: str, messages: list, args: dict) -> None:
-    tokens = tokenize(messages, args) if messages else 0
+    tokens = count_tokens(messages, args) if messages else 0
     log_path = os.path.join(args['cmd_dir'], os.path.splitext(args['ll_file'])[0] + ".log")
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
@@ -78,16 +87,41 @@ def log_command(command: str, messages: list, args: dict) -> None:
 
 def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
     print("Available commands:")
-    for command, func in plugins.items():
-        print(f"  {command}: {func}")
+    combined_commands = get_combined_commands()
+    for command, func in combined_commands.items():
+        #docstring = func.__doc__.split('\n')[0] if func.__doc__ else 'No description available'
+        print(f"{command}: {func}")
+    return messages
+
+def change_role_last_message(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+    if messages:
+        index = int(input("Enter index of last message to change role: ")) or len(messages) - 1
+        messages[index]['role'] = input("Enter new role: ") or args.role
     return messages
 
 test_commands = {'h': help_message, 
                 'md': export_messages_to_markdown, 
-                "p": previous_message_content_edit, 
-                's': search_messages,
                 'sc': save_config,
-                'uc': update_config}
+                'uc': update_config,
+                'ch': change_role_last_message}
+
+def get_combined_commands():
+    combined_commands = {**plugins, **test_commands}
+    return combined_commands
+
+def generate_command_map(combined_commands):
+    command_map = {}
+    for command, func in combined_commands.items():
+        command_map[command] = func  # Full name
+        if len(command) > 1:
+            if command[0] in combined_commands:
+                if command[0:2] not in combined_commands:
+                    command_map[command[0:2]] = func
+                else:
+                    print(f"Warning: command {command[0:2]} already exists. Only lengths of 1 and 2 are supported.")
+            else:
+                command_map[command[0]] = func
+    return command_map
 
 def main() -> None:
     args = parse_arguments()
