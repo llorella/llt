@@ -1,8 +1,9 @@
 import os
 import subprocess
+import time
 import base64
 
-from message import Message
+from message import Message, view_message
 from utils import path_input, content_input, language_extension_map, inverse_kv_map, encode_image, supported_images
 
 def list_files(dir_path):
@@ -78,16 +79,40 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
 temp_file = "tmp.txt"
 
-def previous_message_content_edit(messages: list[Message], args: dict):
-    if (os.path.exists(temp_file)):
-        os.truncate(temp_file, 0)
+def edit_content_message(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
     if not messages:
-        msg = Message(role="user", content="# This message should be edited.")
-        messages.append(msg)
-    save_or_edit_code_block(temp_file, messages[-1]['content'], "vim")
-    with open(temp_file, "r") as content:
-        messages[-1]['content'] = content.read()
-    os.close(content)  
+        print("No messages to edit.")
+        return messages
+
+    message_index = int(input(f"Enter index of previous message to edit (default is {index}, -2 for last message): ") or index)
+    message = messages[message_index]
+    print(f"Previous message content: {message['content']}")
+
+    action = input("Choose an action: (o)verwrite, (a)ppend, or (e)dit previous message? ").strip().lower()
+
+    if action == 'o':
+        new_content = content_input()
+        message['content'] = new_content
+    elif action == 'a':
+        print("Appending to previous message content...")
+        new_content = content_input()
+        message['content'] += ' ' + new_content
+    elif action == 'e':
+        temp_file = "tmp.txt"
+        with open(temp_file, 'w') as f:
+            f.write(message['content'])
+
+        subprocess.run(['vim', temp_file], check=True)
+
+        with open(temp_file, 'r') as f:
+            message['content'] = f.read()
+
+        os.remove(temp_file)
+    else:
+        print("Invalid action. Skipping edit.")
+        return messages
+    messages[message_index] = message
+    view_message(messages, args, index=len(messages) - 2)
     return messages
 
 def edit_message(messages: list[Message], args: dict) -> list[Message]:
@@ -116,5 +141,31 @@ def include_file(messages: list[Message], args: dict) -> list[Message]:
     else:
         with open(file_path, 'r') as file:
             data = file.read()
-        messages.append({'role': 'user', 'content': f"```{inverse_kv_map(language_extension_map)[ext.lower()] if ext else ''}\n{data}\n```"})
+        language = inverse_kv_map(language_extension_map)[ext.lower()] if ext else None
+        messages.append({'role': 'user', 'content': f'```{language}\n{data}\n```' if language else f'{data}\n'})
         return messages
+    
+def convert_text_base64(messages: list[Message], args: dict) -> list[Message]:
+    # convert all user messages into base64 encoded text
+    for message in messages:
+        if message['role'] == 'user':
+            message['content'] = base64.b64encode(message['content'].encode('utf-8')).decode('utf-8')
+    return messages
+    
+
+""" def detect_change(messages: list[Message], args: dict) -> list[Message]:
+    # fn l
+    monitor_dir = input("Enter directory to monitor: ")
+    sleep_time = input("Enter sleep time in seconds: ")
+    if not os.path.exists(monitor_dir):
+        print(f"Directory {monitor_dir} does not exist.")
+        return messages
+
+    def monitor_files():
+        # monitor screnshot dir in pictures dir for changes
+        # if changes are detected, add a message to the conversation
+        # as a screenshot-to-text tool
+
+        pass """
+
+

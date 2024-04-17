@@ -7,7 +7,7 @@ import argparse
 from typing import List, Dict
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
-from editor import edit_message, include_file
+from editor import edit_message, include_file, convert_text_base64, edit_content_message
 from utils import Colors, quit_program, tokenize, count_tokens
 from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
@@ -103,7 +103,9 @@ test_commands = {'h': help_message,
                 'md': export_messages_to_markdown, 
                 'sc': save_config,
                 'uc': update_config,
-                'ch': change_role_last_message}
+                'ch': change_role_last_message,
+                'b': convert_text_base64,
+                'ec': edit_content_message}
 
 def get_combined_commands():
     combined_commands = {**plugins, **test_commands}
@@ -136,6 +138,9 @@ def main() -> None:
         messages = include_file(messages, args)
     if args.prompt:
         messages.append({'role': 'user', 'content': args.prompt})
+    if args.role == 'system':
+        messages[-1]['role'] = 'system'
+        args.role = 'user'
     if args.non_interactive:
         messages = prompt_message(messages, args)
         if args.ll_file: write_message(messages, args)

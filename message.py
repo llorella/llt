@@ -54,20 +54,27 @@ def append_message(messages: List[Message], args: Optional[Dict] = None) -> List
     messages[-2]['content'] += messages[-1]['content']
     messages.pop()
     return messages
+
+def view_helper(role: str, content: str) -> str:
+    color = colors.get(role, colors['reset'])
+    try:
+        content_lines = content.split('\\n')
+        if content_lines:
+            print(f"{color}[{role.capitalize()}]{colors['reset']}")
+            for line in content_lines:
+                print(line)
+    except AttributeError:
+        print("Can't view image messages yet. On todo list.")
     
-def view_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    for msg in messages:
-        role, content = msg['role'], msg['content']
-        color = colors.get(role, colors['reset'])  
-        try:
-            content_lines = content.split('\n')
-            if content_lines:
-                print(f"{color}{role.capitalize()}:{colors['reset']} {content_lines[0]}")
-                for line in content_lines[1:]:
-                    print(line)
-        except AttributeError:
-            print("Can't view image messages yet. On todo list.")
-    print(f"Total messages: {len(messages)}")
+def view_message(messages: List[Message], args: Optional[Dict] = None, index: int = None) -> List[Message]:
+    count, messages_len = 0, len(messages)
+    for i, msg in enumerate(messages):
+        if not index or i == index: 
+            view_helper(msg['role'], msg['content'])
+            count += 1
+            print(f"Displaying message {i+1} of {messages_len}.")
+        
+    print(f"Total messages shown: {count}")
     return messages
 
 def x_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
