@@ -21,20 +21,19 @@ def copy_to_clipboard(text: str) -> None:
     except ImportError:
         print("pyperclip module not found. Skipping clipboard functionality.")
 
-def save_or_edit_code_block(filename: str, code: str, editor: str) -> None:
+def save_or_edit_code_block(filename: str, code: str, editor: str, mode: str = 'w') -> None:
     if editor:
         copy_to_clipboard(code)
         subprocess.run([editor, filename], check=True)
     else:
-        with open(filename, 'w') as file:
+        with open(filename, mode) as file:
             file.write(code.strip())
 
 def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
     print(f"File: {code_block['filename']}")
-    print(f"Type: {code_block['language']}")
     print(f"Code: \n{code_block['code']}")
     action = input(
-        "Write to file (w), skip (s), or edit (e)? ").strip().lower()
+        "Write to file (w), edit (e), append (a), or skip (s)? ").strip().lower()
     if action in ('w', 'e'):
         filename = os.path.join(
             dir_path,
@@ -47,6 +46,18 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
             code_block['code'],
             editor if action == 'e' else '')
         return f"{filename} changed."
+    elif action == 'a':
+        filename = os.path.join(
+            dir_path,
+            path_input(
+                code_block['filename'],
+                dir_path))
+        save_or_edit_code_block(
+            filename,
+            code_block['code'],
+            None,
+            'a')
+        return f"{filename} appended."
     elif action == 's':
         return "Skipped."
 
@@ -56,7 +67,6 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
     current_code_block = {"filename": "", "code": "", "language": ""}
     code_block_marker = '```'
     filename_marker = '##'
-
     lines = markdown_text.split('\n')
     for i, line in enumerate(lines):
         if line.startswith(code_block_marker):
@@ -83,13 +93,10 @@ def edit_content_message(messages: list[Message], args: dict, index: int = -1) -
     if not messages:
         print("No messages to edit.")
         return messages
-
     message_index = int(input(f"Enter index of previous message to edit (default is {index}, -2 for last message): ") or index)
     message = messages[message_index]
-    print(f"Previous message content: {message['content']}")
-
+    print(f"Messages[{message_index}] content: {message['content']}")
     action = input("Choose an action: (o)verwrite, (a)ppend, or (e)dit previous message? ").strip().lower()
-
     if action == 'o':
         new_content = content_input()
         message['content'] = new_content
@@ -115,13 +122,15 @@ def edit_content_message(messages: list[Message], args: dict, index: int = -1) -
     view_message(messages, args, index=len(messages) - 2)
     return messages
 
-def edit_message(messages: list[Message], args: dict) -> list[Message]:
+def edit_message(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
+    if not messages or abs(index) > len(messages)-1: return messages.append({'role': 'user', 'content': "Message edit error. Either index is out of range or no messages to edit."})
+    message_index = int(input(f"Enter index of previous message to edit (default is {index}, -2 for last message): ") or index)
+    message = messages[message_index]
     default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll_file)[0])
     os.makedirs(default_exec_dir, exist_ok=True)
-    exec_dir = path_input(default_exec_dir, args.exec_dir) if not args.non_interactive\
-        else default_exec_dir
-    print(f"Using exec directory: {os.path.basename(exec_dir)}")
-    code_blocks = extract_code_blocks(messages[-1]['content'])
+    exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
+    print(f"Extracting code from messages[{message_index}] using exec directory: {exec_dir}")
+    code_blocks = extract_code_blocks(message['content'])
     new_results = [
         handle_code_block(
             code_block,
@@ -151,21 +160,13 @@ def convert_text_base64(messages: list[Message], args: dict) -> list[Message]:
         if message['role'] == 'user':
             message['content'] = base64.b64encode(message['content'].encode('utf-8')).decode('utf-8')
     return messages
+
+def execute_command(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
+    message_index = int(input(f"Enter index of previous message to execute (default is {index}, -2 for last message): ") or index)
+    message = messages[message_index]
+    # CLAUDE: MAKE CHANGES HERE
+    return messages
     
 
-""" def detect_change(messages: list[Message], args: dict) -> list[Message]:
-    # fn l
-    monitor_dir = input("Enter directory to monitor: ")
-    sleep_time = input("Enter sleep time in seconds: ")
-    if not os.path.exists(monitor_dir):
-        print(f"Directory {monitor_dir} does not exist.")
-        return messages
-
-    def monitor_files():
-        # monitor screnshot dir in pictures dir for changes
-        # if changes are detected, add a message to the conversation
-        # as a screenshot-to-text tool
-
-        pass """
 
 
