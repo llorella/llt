@@ -6,8 +6,8 @@ import argcomplete
 import argparse
 from typing import List, Dict
 
-from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, x_message
-from editor import edit_message, include_file, convert_text_base64, edit_content_message
+from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
+from editor import edit_message, include_file, execute_command,convert_text_base64, edit_content_message
 from utils import Colors, quit_program, tokenize, count_tokens
 from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
@@ -17,24 +17,16 @@ plugins = {
     'write': write_message,
     'view': view_message,
     'new': new_message,
-    'complete': prompt_message,
+    'prompt': prompt_message,
     'edit': edit_message,
     'file': include_file,
     'quit': quit_program,
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
-    'xcut': x_message
+    'cut': cut_message,
+    'execute': execute_command
 }
-
-""" def register_command(name=None, aliases=[]):
-    def decorator(func):
-        func_name = name if name else func.__name__
-        plugins[func_name] = func
-        for alias in aliases:
-            plugins[alias] = func
-        return func
-    return decorator """
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
@@ -110,20 +102,6 @@ test_commands = {'h': help_message,
 def get_combined_commands():
     combined_commands = {**plugins, **test_commands}
     return combined_commands
-
-def generate_command_map(combined_commands):
-    command_map = {}
-    for command, func in combined_commands.items():
-        command_map[command] = func  # Full name
-        if len(command) > 1:
-            if command[0] in combined_commands:
-                if command[0:2] not in combined_commands:
-                    command_map[command[0:2]] = func
-                else:
-                    print(f"Warning: command {command[0:2]} already exists. Only lengths of 1 and 2 are supported.")
-            else:
-                command_map[command[0]] = func
-    return command_map
 
 def main() -> None:
     args = parse_arguments()

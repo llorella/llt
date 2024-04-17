@@ -163,10 +163,28 @@ def convert_text_base64(messages: list[Message], args: dict) -> list[Message]:
 
 def execute_command(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
     message_index = int(input(f"Enter index of previous message to execute (default is {index}, -2 for last message): ") or index)
-    message = messages[message_index]
-    # CLAUDE: MAKE CHANGES HERE
+    code_blocks = extract_code_blocks(messages[message_index]['content'])
+    for code_block in code_blocks:
+        if code_block['language'] == 'bash' or code_block['language'] == 'shell' or not code_block['language']:
+            print(code_block['code'])
+            if input(f"Execute {code_block['language'] or 'text'} block? (y/n): ").lower() == 'y':
+                try:
+                    print(f"Executing bash command from message {message_index}:")
+                    result = subprocess.run(code_block['code'], 
+                                            shell=True, 
+                                            check=True, 
+                                            stdout=subprocess.PIPE, 
+                                            stderr=subprocess.PIPE,
+                                            universal_newlines=True)
+                    print("Command output:")
+                    print(result.stdout)
+                except subprocess.CalledProcessError as e:
+                    print(f"Error executing command: {e}")
+                    print("Error details:")
+                    print(e.stderr)
+            else:
+                print("Skipping code block execution.")
+        else:
+            print(f"Skipping code block with language: {code_block['language']}. Only 'bash' or 'shell' code blocks are executed.")
+            
     return messages
-    
-
-
-

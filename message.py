@@ -59,10 +59,11 @@ def view_helper(role: str, content: str) -> str:
     color = colors.get(role, colors['reset'])
     try:
         content_lines = content.split('\\n')
+        print(f"{color}[{role.capitalize()}]{colors['reset']}")
         if content_lines:
-            print(f"{color}[{role.capitalize()}]{colors['reset']}")
             for line in content_lines:
                 print(line)
+        print(f"{color}[/{role.capitalize()}]{colors['reset']}")
     except AttributeError:
         print("Can't view image messages yet. On todo list.")
     
@@ -72,12 +73,12 @@ def view_message(messages: List[Message], args: Optional[Dict] = None, index: in
         if not index or i == index: 
             view_helper(msg['role'], msg['content'])
             count += 1
-            print(f"Displaying message {i+1} of {messages_len}.")
+            print(f"Message {i+1} of {messages_len}.")
         
-    print(f"Total messages shown: {count}")
+    print(f"\nTotal messages shown: {count}")
     return messages
 
-def x_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
+def cut_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     values = input("Enter values to cut: ").split(',')
     user_input = input(f"Cutting messages {start} to {end}. Proceed? (Any key for yes, Ctrl+C or None to cancel): ")
     if user_input:
