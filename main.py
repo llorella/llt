@@ -24,9 +24,7 @@ plugins = {
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
-    'cut': cut_message,
-    'execute': execute_command
-}
+    'cut': cut_message}
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
@@ -97,7 +95,8 @@ test_commands = {'h': help_message,
                 'uc': update_config,
                 'ch': change_role_last_message,
                 'b': convert_text_base64,
-                'ec': edit_content_message}
+                'ec': edit_content_message,
+                'x': execute_command}
 
 def get_combined_commands():
     combined_commands = {**plugins, **test_commands}
@@ -106,7 +105,7 @@ def get_combined_commands():
 def main() -> None:
     args = parse_arguments()
     init_directories(args)
-
+    # args: argparse.Namespace serves as central data structure for all command line arguments. CLI args should be aligned exactly with runtime args.
     messages = list()
     if args.ll_file:
         messages = load_message(messages, args)
@@ -123,14 +122,10 @@ def main() -> None:
         messages = prompt_message(messages, args)
         if args.ll_file: write_message(messages, args)
         quit_program(messages, args)
-    
     Colors.print_header()
-    
     greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
-
-    command_map = {**plugins, **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}}           #'seq': sequence_messages,
-    command_map.update(test_commands)
+    command_map = {**get_combined_commands(), **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}}
     while True:
         try:
             cmd = input('llt> ')
