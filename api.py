@@ -4,6 +4,10 @@ import anthropic
 import time
 import os
 import yaml
+from utils import media_type_map, encode_image
+
+def get_start_time():
+    return time.time()
 
 openai_client = OpenAI()
 mistral_client = MistralClient()
@@ -69,9 +73,6 @@ def collect_messages(completion_stream: dict):
     full_reply_content = ''.join(collected_messages)
     return {'role': role, 'content': full_reply_content}
 
-def get_start_time():
-    return time.time()
-
 def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
     providers = api_config['models']
     func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion]}
@@ -109,18 +110,18 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
         messages = messages[1:]
     else:
         system_prompt = "You are a helpful programming assistant."
-
+    #messages = anthropic_image_helper(messages, args)
     response_content = ""
     start_time = get_start_time()
     with anthropic_client.messages.stream(
         model=args.model,
         system=system_prompt,
         messages=messages,
+        temperature=args.temperature,
         max_tokens=4096
     ) as stream:
         for text in stream.text_stream:
             print(text, end="", flush=True)
             response_content += text
-
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
