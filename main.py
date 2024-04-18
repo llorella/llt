@@ -7,7 +7,7 @@ import argparse
 from typing import List, Dict
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
-from editor import edit_message, include_file, execute_command,convert_text_base64, edit_content_message
+from editor import edit_message, include_file, execute_command,convert_text_base64, edit_content_message, edit_role_message
 from utils import Colors, quit_program, tokenize, count_tokens
 from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
@@ -83,20 +83,15 @@ def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
         print(f"{command}: {func}")
     return messages
 
-def change_role_last_message(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
-    if messages:
-        index = int(input("Enter index of last message to change role: ")) or len(messages) - 1
-        messages[index]['role'] = input("Enter new role: ") or args.role
-    return messages
-
-test_commands = {'h': help_message, 
-                'md': export_messages_to_markdown, 
-                'sc': save_config,
-                'uc': update_config,
-                'ch': change_role_last_message,
-                'b': convert_text_base64,
-                'ec': edit_content_message,
-                'x': execute_command}
+test_commands = {
+    'h': help_message, 
+    'b': convert_text_base64,
+    'x': execute_command,
+    'md': export_messages_to_markdown, 
+    'sc': save_config,
+    'uc': update_config,
+    'er': edit_role_message,
+    'ec': edit_content_message}
 
 def get_combined_commands():
     combined_commands = {**plugins, **test_commands}

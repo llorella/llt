@@ -122,6 +122,12 @@ def edit_content_message(messages: list[Message], args: dict, index: int = -1) -
     view_message(messages, args, index=len(messages) - 2)
     return messages
 
+def edit_role_message(messages: list[dict[str, any]], args: dict, index: int = -1) -> list[dict[str, any]]:
+    if messages:
+        index = int(input(f"Enter index of message to change role (default is {index}): ") or index)
+        messages[index]['role'] = input("Enter new role: ") or args.role
+    return messages
+
 def edit_message(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
     if not messages or abs(index) > len(messages)-1: return messages.append({'role': 'user', 'content': "Message edit error. Either index is out of range or no messages to edit."})
     message_index = int(input(f"Enter index of previous message to edit (default is {index}, -2 for last message): ") or index)
