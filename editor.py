@@ -172,7 +172,7 @@ def execute_command(messages: list[Message], args: dict, index: int = -1) -> lis
     code_blocks = extract_code_blocks(messages[message_index]['content'])
     for code_block in code_blocks:
         if code_block['language'] == 'bash' or code_block['language'] == 'shell' or not code_block['language']:
-            print(code_block['code'])
+            print(f"Code:\n{code_block['code']}")
             if input(f"Execute {code_block['language'] or 'text'} block? (y/n): ").lower() == 'y':
                 try:
                     print(f"Executing bash command from message {message_index}:")

@@ -4,7 +4,7 @@ import anthropic
 import time
 import os
 import yaml
-from utils import media_type_map, encode_image
+import subprocess
 
 def get_start_time():
     return time.time()
@@ -75,7 +75,7 @@ def collect_messages(completion_stream: dict):
 
 def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
     providers = api_config['models']
-    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion]}
+    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion, get_local_completion]}
     for provider, families in providers.items():
         full_model_names = [f"{family}-{model}" for family in families for model in families[family]]
         if args.model in full_model_names and provider in func_map:
@@ -125,3 +125,41 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
             response_content += text
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
+############################################################################
+# local model backends below
+############################################################################
+shared_local_llms_dir = '/usr/share/llms/'
+llama_cpp_dir = os.getenv('HOME')  + '/llama.cpp/'
+local_log_dir = os.getenv('HOME') + '/.llama_cpp_logs/'
+local_log_file = local_log_dir + 'llg_log'
+
+def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
+    if not messages:
+        raise ValueError("No messages provided for completion.")
+    model_path =  shared_local_llms_dir + 'Meta-' + args.model.title() + '-Q5_K_M.gguf'
+    print(f"model_path: {model_path}")
+    command = [llama_cpp_dir + 'main','-m', str(model_path), '--color', '--temp', str(args.temperature),
+                '--repeat-penalty', '1.1', '-n', '1000', '-p',
+                f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\nYou are llama, a helpful AI assistant.<|eot_id|><|start_header_id|>user<|end_header_id|>\n{messages[-1]["content"]}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n', 
+                '-c', str(args.max_tokens), '-r', '<|eot_id|>',
+                '--in-prefix', '<|start_header_id|>user<|end_header_id|>\n\n', 
+                '--in-suffix', '<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n', 
+                '-ld', local_log_dir, '--log-file', local_log_file]
+    try:
+        completion = ""
+        try: 
+            result = subprocess.run(command, 
+                                    check=True, 
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True)
+            if (os.path.exists(local_log_file)):
+                llama_cpp_log = load_config(local_log_file)
+                completion = llama_cpp_log['output']
+            else:
+                print("Error: log file not found")
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Error running LLaMA model: {e.stderr}")
+    
+    return {'role': 'assistant', 'content': str(completion)}
