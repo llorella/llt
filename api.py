@@ -132,13 +132,17 @@ llama_cpp_dir = f"{os.getenv('HOME')  + '/llama.cpp/'}"
 local_log_dir = f"{os.getenv('HOME') + '/.llama_cpp_logs/'}"
 ############################################################################
 def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
+    #todo: helper token function that takes a message and outputs correctly formatted string for each message
+    def format_message(message: dict) -> str:
+        return f"<|start_header_id|>{message['role']}<|end_header_id|>\n{message['content']}<|eot_id|>\n"
     if not messages:
         raise ValueError("No messages provided for completion.")
     model_path =  shared_local_llms_dir + 'Meta-' + args.model.title() + '-Q5_K_M.gguf'
     print(f"model_path: {model_path}")
+    print(''.join([format_message(message) for message in messages]))
     command = [llama_cpp_dir + 'main','-m', str(model_path), '--color', '--temp', str(args.temperature),
                 '--repeat-penalty', '1.1', '-n', f'{str(args.max_tokens)}','-p',
-                f'<|begin_of_text|><|start_header_id|>system<|end_header_id|>\nYou are llama, a helpful AI assistant.<|eot_id|>\n<|start_header_id|>user<|end_header_id|>\n{messages[-1]["content"]}<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n', 
+                "<|begin_of_text|>" + ''.join([format_message(message) for message in messages]),
                 '-c', str(args.max_tokens), '-r', '<|eot_id|>',
                 '--in-prefix', '\n<|start_header_id|>user<|end_header_id|>\n\n', 
                 '--in-suffix', '<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n', 
