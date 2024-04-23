@@ -11,6 +11,7 @@ def get_start_time():
 
 mistral_client = MistralClient()
 anthropic_client = anthropic.Client()
+openai_client = OpenAI()
 
 def save_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
     config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
@@ -82,7 +83,6 @@ def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
     raise ValueError(f"Invalid model: {args.model}")
 
 def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
-    openai_client = OpenAI()
     start_time = get_start_time()
     completion = openai_client.chat.completions.create(
         messages=messages,
@@ -110,7 +110,6 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
         messages = messages[1:]
     else:
         system_prompt = "You are a helpful programming assistant."
-    #messages = anthropic_image_helper(messages, args)
     response_content = ""
     start_time = get_start_time()
     with anthropic_client.messages.stream(
@@ -126,27 +125,27 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
 ############################################################################
-# local model backends below
-shared_local_llms_dir = '/usr/share/llms/'
-llama_cpp_dir = f"{os.getenv('HOME')  + '/llama.cpp/'}"
-local_log_dir = f"{os.getenv('HOME') + '/.llama_cpp_logs/'}"
+# local model implementations below
 ############################################################################
+llama_cpp_options = api_config['llama_cpp']
+llama_cpp_root_dir, llama_cpp_logs_dir = llama_cpp_options['root_dir'], llama_cpp_options['logs_dir']
+
+def get_local_model_path(model: str) -> str:
+    path = api_config['local_llms_dir'] + model + '.gguf'
+    print(f"model_path: {path}")
+    return path
+
 def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
-    #todo: helper token function that takes a message and outputs correctly formatted string for each message
-    def format_message(message: dict) -> str:
-        return f"<|start_header_id|>{message['role']}<|end_header_id|>\n{message['content']}<|eot_id|>\n"
     if not messages:
         raise ValueError("No messages provided for completion.")
-    model_path =  shared_local_llms_dir + 'Meta-' + args.model.title() + '-Q5_K_M.gguf'
-    print(f"model_path: {model_path}")
-    print(''.join([format_message(message) for message in messages]))
-    command = [llama_cpp_dir + 'main','-m', str(model_path), '--color', '--temp', str(args.temperature),
-                '--repeat-penalty', '1.1', '-n', f'{str(args.max_tokens)}','-p',
-                "<|begin_of_text|>" + ''.join([format_message(message) for message in messages]),
-                '-c', str(args.max_tokens), '-r', '<|eot_id|>',
-                '--in-prefix', '\n<|start_header_id|>user<|end_header_id|>\n\n', 
-                '--in-suffix', '<|eot_id|>\n<|start_header_id|>assistant<|end_header_id|>\n\n', 
-                '-ld', local_log_dir]
+    model_prefix, model_path = args.model.split('-')[0], get_local_model_path(args.model)
+    model_options = llama_cpp_options[model_prefix.lower()]
+    def format_message(message: dict) -> str:
+        return model_options['format'].format(role=message['role'], content=message['content'])
+    command = [llama_cpp_root_dir + 'main','-m', str(model_path), '--color', '--temp', str(args.temperature),
+                '--repeat-penalty', '1.1', '-n', f'{str(args.max_tokens)}', '-p',
+                model_options['prompt-prefix'] + ''.join([format_message(message) for message in messages]),
+                '-r', f"{model_options['stop']}", '-ld', llama_cpp_logs_dir]
     try:
         completion = ""
         try: 
@@ -155,7 +154,7 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
                                     stderr=subprocess.PIPE,
                                     universal_newlines=True, 
                                     cwd=os.getenv('HOME'))
-            log_files = [os.path.join(local_log_dir, f) for f in os.listdir(local_log_dir) if os.path.isfile(os.path.join(local_log_dir, f))]
+            log_files = [os.path.join(llama_cpp_logs_dir, f) for f in os.listdir(llama_cpp_logs_dir) if os.path.isfile(os.path.join(llama_cpp_logs_dir, f))]
             completion = load_config(max(log_files, key=os.path.getmtime))['output']
         except KeyboardInterrupt:
             print("KeyboardInterrupt")
