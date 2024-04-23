@@ -128,7 +128,7 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
 # local model implementations below
 ############################################################################
 llama_cpp_options = api_config['llama_cpp']
-llama_cpp_root_dir, llama_cpp_logs_dir = llama_cpp_options['root_dir'], llama_cpp_options['logs_dir']
+llama_cpp_root_dir, llama_cpp_logs_dir = llama_cpp_options['root_dir'], llama_cpp_options['log_dir']
 
 def get_local_model_path(model: str) -> str:
     path = api_config['local_llms_dir'] + model + '.gguf'
@@ -154,6 +154,7 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
                                     stderr=subprocess.PIPE,
                                     universal_newlines=True, 
                                     cwd=os.getenv('HOME'))
+            print("\n")
             log_files = [os.path.join(llama_cpp_logs_dir, f) for f in os.listdir(llama_cpp_logs_dir) if os.path.isfile(os.path.join(llama_cpp_logs_dir, f))]
             completion = load_config(max(log_files, key=os.path.getmtime))['output']
         except KeyboardInterrupt:
