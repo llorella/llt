@@ -140,11 +140,13 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
         raise ValueError("No messages provided for completion.")
     model_prefix, model_path = args.model.split('-')[0], get_local_model_path(args.model)
     model_options = llama_cpp_options[model_prefix.lower()]
-    def format_message(message: dict) -> str:
-        return model_options['format'].format(role=message['role'], content=message['content'])
+
+    def format_message(messages: list[dict[str, any]]) -> str:
+        return ''.join([model_options['format'].format(role=message['role'], content=message['content']) for message in messages])
+    
     command = [llama_cpp_root_dir + 'main','-m', str(model_path), '--color', '--temp', str(args.temperature),
                 '--repeat-penalty', '1.1', '-n', f'{str(args.max_tokens)}', '-p',
-                model_options['prompt-prefix'] + ''.join([format_message(message) for message in messages]),
+                model_options['prompt-prefix'] + format_message(messages),
                 '-r', f"{model_options['stop']}", '-ld', llama_cpp_logs_dir]
     try:
         completion = ""
@@ -161,5 +163,4 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
             print("KeyboardInterrupt")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Error running local model {args.model}: {e.stderr}")
-    
     return {'role': 'assistant', 'content': str(completion)}
