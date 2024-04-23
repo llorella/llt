@@ -58,7 +58,7 @@ def append_message(messages: List[Message], args: Optional[Dict] = None) -> List
 def view_helper(role: str, content: str) -> str:
     color = colors.get(role, colors['reset'])
     try:
-        content_lines = content.split('\\n')
+        content_lines = str(content).split('\\n')
         print(f"{color}[{role.capitalize()}]{colors['reset']}")
         if content_lines:
             for line in content_lines:
@@ -80,10 +80,10 @@ def view_message(messages: List[Message], args: Optional[Dict] = None, index: in
 
 def cut_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     values = input("Enter values to cut: ").split(',')
+    start = int(values[0]) - 1
+    end = int(values[1]) if len(values) > 1 else start + 1
     user_input = input(f"Cutting messages {start} to {end}. Proceed? (Any key for yes, Ctrl+C or None to cancel): ")
     if user_input:
-        start = int(values[0]) - 1
-        end = int(values[1]) if len(values) > 1 else start + 1
         return messages[start:end]
     else:
         return messages

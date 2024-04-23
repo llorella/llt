@@ -4,14 +4,14 @@ import anthropic
 import time
 import os
 import yaml
-from utils import media_type_map, encode_image
+import subprocess
 
 def get_start_time():
     return time.time()
 
-openai_client = OpenAI()
 mistral_client = MistralClient()
 anthropic_client = anthropic.Client()
+openai_client = OpenAI()
 
 def save_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
     config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
@@ -75,7 +75,7 @@ def collect_messages(completion_stream: dict):
 
 def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
     providers = api_config['models']
-    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion]}
+    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion, get_local_completion]}
     for provider, families in providers.items():
         full_model_names = [f"{family}-{model}" for family in families for model in families[family]]
         if args.model in full_model_names and provider in func_map:
@@ -110,7 +110,6 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
         messages = messages[1:]
     else:
         system_prompt = "You are a helpful programming assistant."
-    #messages = anthropic_image_helper(messages, args)
     response_content = ""
     start_time = get_start_time()
     with anthropic_client.messages.stream(
@@ -125,3 +124,41 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
             response_content += text
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
+############################################################################
+# local model implementations below
+############################################################################
+llama_cpp_options = api_config['llama_cpp']
+llama_cpp_root_dir, llama_cpp_logs_dir = llama_cpp_options['root_dir'], llama_cpp_options['logs_dir']
+
+def get_local_model_path(model: str) -> str:
+    path = api_config['local_llms_dir'] + model + '.gguf'
+    print(f"model_path: {path}")
+    return path
+
+def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
+    if not messages:
+        raise ValueError("No messages provided for completion.")
+    model_prefix, model_path = args.model.split('-')[0], get_local_model_path(args.model)
+    model_options = llama_cpp_options[model_prefix.lower()]
+    def format_message(message: dict) -> str:
+        return model_options['format'].format(role=message['role'], content=message['content'])
+    command = [llama_cpp_root_dir + 'main','-m', str(model_path), '--color', '--temp', str(args.temperature),
+                '--repeat-penalty', '1.1', '-n', f'{str(args.max_tokens)}', '-p',
+                model_options['prompt-prefix'] + ''.join([format_message(message) for message in messages]),
+                '-r', f"{model_options['stop']}", '-ld', llama_cpp_logs_dir]
+    try:
+        completion = ""
+        try: 
+            completion = subprocess.run(command, 
+                                    check=True, 
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True, 
+                                    cwd=os.getenv('HOME'))
+            log_files = [os.path.join(llama_cpp_logs_dir, f) for f in os.listdir(llama_cpp_logs_dir) if os.path.isfile(os.path.join(llama_cpp_logs_dir, f))]
+            completion = load_config(max(log_files, key=os.path.getmtime))['output']
+        except KeyboardInterrupt:
+            print("KeyboardInterrupt")
+    except subprocess.CalledProcessError as e:
+        raise RuntimeError(f"Error running local model {args.model}: {e.stderr}")
+    
+    return {'role': 'assistant', 'content': str(completion)}
