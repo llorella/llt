@@ -7,7 +7,7 @@ import argparse
 from typing import List, Dict
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
-from editor import edit_message, include_file, execute_command,convert_text_base64, edit_content_message, edit_role_message
+from editor import edit_message, include_file, execute_command, convert_text_base64, edit_content_message, edit_role_message
 from utils import Colors, quit_program, tokenize, count_tokens
 from api import save_config, update_config, api_config, full_model_choices
 from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
@@ -52,7 +52,10 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['ll_dir']))
 
     parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
+
+    # All plugin flags here
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
+
 
     argcomplete.autocomplete(parser)
     return parser.parse_args()
