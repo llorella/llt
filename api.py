@@ -139,13 +139,19 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
     if not messages:
         raise ValueError("No messages provided for completion.")
     model_options, model_path = llama_cpp_options[args.model.split('-')[0].lower()], get_local_model_path(args.model)
-    def format_message(messages: list[dict[str, any]]) -> str:
+    def _format_message(messages: list[dict[str, any]]) -> str:
         prompt_string = model_options['prompt-prefix'].join([model_options['format'].format(role=message['role'], content=message['content']) for message in messages])
         if len(messages) > 1: prompt_string += model_options['in-suffix']
         return prompt_string
+    def format_message(messages: list[dict[str, any]]) -> str:
+        prompt_string = model_options['prompt-prefix']
+        for i, msg in enumerate(messages):
+            prompt_string += model_options['format'].format(role=msg['role'], content=msg['content'])
+            if i == len(messages) - 1: prompt_string += model_options['in-suffix']
+        return prompt_string
     command = [llama_cpp_root_dir + 'main','-m', str(model_path), 
-                '--color', '--temp', str(args.temperature),
-                '-p', format_message(messages), '-c', f"{str(args.max_tokens)}",
+                '--color', '--temp', str(args.temperature), '-n', f"{str(args.max_tokens)}",
+                '-p', format_message(messages), 
                 '-r', f"{model_options['stop']}", '-ld', llama_cpp_logs_dir]
     try:
         completion = ""
