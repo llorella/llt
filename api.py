@@ -18,32 +18,22 @@ def save_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, an
     if config_path.lower() == 'exit':
         print("Config save canceled.")
         return messages
-    
     with open(config_path, 'w') as config_file:
         yaml.dump(vars(args), config_file, default_flow_style=False)
     print(f"Config saved to {config_path}")
     return messages
 
 def update_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
-    print("Current config:")
     for arg in vars(args):
         print(f"{arg}: {getattr(args, arg)}")
-    
     try:
-        key = input("Enter the name of the config option to update (or 'exit' to cancel): ")
-        if key.lower() == 'exit':
-            print("Config update canceled.")
-            return messages
+        key = input("Enter the name of the config option to update: ")
         if not hasattr(args, key):
             print(f"Config {key} does not exist.")
             return messages
         current_value = getattr(args, key)
-        print(f"Current value for {key}: {current_value}")
-        new_value = input(f"Enter new value for {key} (or 'exit' to cancel): ")
-        if new_value.lower() == 'exit':
-            print("Config update canceled.")
-            return messages
-
+        new_value = input(f"Current value for {key}: {current_value}\nEnter new value for {key} (or 'exit' to cancel): ")
+        if not new_value.lower() == 'exit': return messages
         casted_value = type(current_value)(new_value)
         setattr(args, key, casted_value)
         print(f"Config updated: {key} = {casted_value}")
