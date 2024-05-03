@@ -39,8 +39,6 @@ class Colors:
         Colors.print_colored("*********************************************************", Colors.YELLOW)
         Colors.print_colored("*********************************************************\n", Colors.YELLOW)
 
-def input_role(role: str) -> str:
-    return input(f"Enter role(default is {role}): ") or role
 
 def content_input() -> str:
     print("Enter content below.")
@@ -63,6 +61,12 @@ def path_completer(text, state):
     if os.path.isdir(text) and not text.endswith(os.path.sep):
         return [text + os.path.sep][state]
     return [x for x in os.listdir(os.path.dirname(text)) if x.startswith(os.path.basename(text))][state]
+
+def list_completer(values):
+    def completer(text, state):
+        matches = [value for value in values if value.startswith(text)]
+        return matches[state] if state < len(matches) else None
+    return completer
     
 def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer_delims(' \t\n;')
@@ -70,6 +74,13 @@ def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer(directory_completer(root_dir) if root_dir else path_completer)
     file_path = input(f"Enter file path (default is {default_file}): ")
     return os.path.join(root_dir if root_dir else os.getcwd(), os.path.expanduser(file_path) if file_path else default_file)
+
+def role_input(default_role: str = None) -> str:
+    roles = ['user', 'assistant', 'system']
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(list_completer(roles))
+    return input(f"Enter role (default is {default_role}): ") or default_role
 
 def count_image_tokens(file_path: str) -> int:
     def resize(width, height):
@@ -190,4 +201,13 @@ def export_messages(messages: list[dict[str, any]], args: dict) -> list[dict[str
             
     print(f"Messages exported to text file at {output_path}")
  
- 
+def get_valid_index(messages, prompt, default=-1):
+    try:
+        idx = int(input(f"Enter index of message to {prompt} (default is {default}, -2 for last message): ") or default)
+        idx = idx % len(messages)  # support negative indexing
+    except ValueError:
+        print("Invalid input. Using default.")
+        idx = default
+    if not -len(messages) <= idx < len(messages):
+        raise IndexError("Index out of range. No operation will be performed.")
+    return idx

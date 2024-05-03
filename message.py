@@ -2,7 +2,7 @@ import os
 import json
 from typing import Optional, TypedDict, Dict, List
 from api import get_completion
-from utils import content_input, path_input, colors #, user_index_input
+from utils import content_input, path_input, colors, get_valid_index, role_input
 
 class Message(TypedDict):
     role: str
@@ -67,19 +67,18 @@ def append_message(messages: List[Message], args: Optional[Dict] = None) -> List
     messages.pop()
     return messages
 
-def view_helper(role: str, content: str) -> str:
-    color = colors.get(role, colors['reset'])
-    try:
-        content_lines = str(content).split('\\n')
-        print(f"{color}[{role.capitalize()}]{colors['reset']}")
-        if content_lines:
-            for line in content_lines:
-                print(line)
-        print(f"{color}[/{role.capitalize()}]{colors['reset']}")
-    except AttributeError:
-        print("Can't view image messages yet. On todo list.")
-    
 def view_message(messages: List[Message], args: Optional[Dict] = None, index: int = None) -> List[Message]:
+    def view_helper(role: str, content: str) -> str:
+        color = colors.get(role, colors['reset'])
+        try:
+            content_lines = str(content).split('\\n')
+            print(f"{color}[{role.capitalize()}]{colors['reset']}")
+            if content_lines:
+                for line in content_lines:
+                    print(line)
+            print(f"{color}[/{role.capitalize()}]{colors['reset']}")
+        except AttributeError:
+            print("Can't view image messages yet. On todo list.")
     count, messages_len = 0, len(messages)
     for i, msg in enumerate(messages):
         if not index or i == index: 
@@ -99,3 +98,8 @@ def cut_message(messages: List[Message], args: Optional[Dict] = None) -> List[Me
         return messages[start:end]
     else:
         return messages
+    
+def change_role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    message_index = get_valid_index(messages, "change role of", index)
+    messages[message_index]['role'] = role_input(messages[message_index]['role'])   
+    return messages
