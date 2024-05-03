@@ -8,11 +8,11 @@ from typing import List, Dict
 from enum import Enum, auto
 
 
-from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
-from editor import edit_message, include_file, execute_command, convert_text_base64, edit_content_message, edit_role_message
+from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message, change_role
+from editor import code_message, include_file, execute_command, edit_content, convert_text_base64
 from utils import Colors, quit_program, count_tokens, export_messages
 from api import save_config, update_config, api_config, full_model_choices
-from ll_email import send_email
+from gmail import send_email
 from web import process_web_request
 
 #from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
@@ -36,7 +36,7 @@ plugins = {
     'view': view_message,
     'new': new_message,
     'prompt': prompt_message,
-    'edit': edit_message,
+    'edit': code_message,
     'file': include_file,
     'quit': quit_program,
     'remove': remove_message,
@@ -89,8 +89,9 @@ def init_directories(args: argparse.Namespace) -> None:
         os.makedirs(directory, exist_ok=True)
 
 def log_command(command: str, messages: list, args: dict) -> None:
+    if command.startswith('v') or command.startswith('h'): return
     tokens = count_tokens(messages, args) if messages else 0
-    log_path = os.path.join(args['cmd_dir'], os.path.splitext(args['ll_file'])[0] + ".log")
+    log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll_file)[0] + ".log")
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
@@ -103,27 +104,35 @@ def log_command(command: str, messages: list, args: dict) -> None:
         logfile.write(f"COMMAND_END\n\n")
 
 def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
-    print("Available commands:")
-    combined_commands = get_combined_commands()
-    for command, func in combined_commands.items():
-        #docstring = func.__doc__.split('\n')[0] if func.__doc__ else 'No description available'
-        print(f"{command}: {func}")
+    function_to_commands = {}
+    for command, function in get_combined_commands().items():
+        if function not in function_to_commands:
+            function_to_commands[function] = []
+        function_to_commands[function].append(command)
+
+    for function, cmds in function_to_commands.items():
+        cmds.sort(key=lambda x: len(x), reverse=True)
+        print(f"({', '.join(cmds)}): {function}")
     return messages
 
 test_commands = {
-    'h': help_message, 
-    'b': convert_text_base64,
-    'x': execute_command,
     'sc': save_config,
     'uc': update_config,
-    'er': edit_role_message,
-    'ec': edit_content_message,
+    'cr': change_role,
+    'ec': edit_content,
+    'help': help_message, 
+    'base64': convert_text_base64,
+    'execute': execute_command,
     'email': send_email,
     'web': process_web_request}
 
 def get_combined_commands():
-    combined_commands = {**plugins, **test_commands}
-    return combined_commands
+    combined = {}
+    for command, function in {**plugins, **test_commands}.items():
+        combined[command] = function
+        if command[0] not in combined: combined[command[0]] = function
+        elif len(command) > 2 and command[1] not in combined: combined[command[1]] = function
+    return combined
 
 def main() -> None:
     args = parse_arguments()
@@ -163,7 +172,7 @@ def main() -> None:
             cmd = input('llt> ')
             if cmd in command_map:
                 messages = command_map[cmd](messages, args)
-                if not cmd.startswith('v'): log_command(cmd, messages, vars(args))
+                log_command(cmd, messages, args)
             else:
                 messages.append({'role': args.role, 'content': f"{cmd}"})
         except KeyboardInterrupt:

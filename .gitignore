@@ -7,7 +7,8 @@
 !editor.py
 !message.py
 !utils.py
-!config.yaml
+!web.py
+!gmail.py
 !README.md
 !LICENSE
 !requirements.txt
