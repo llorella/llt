@@ -2,7 +2,7 @@ import os
 import json
 from typing import Optional, TypedDict, Dict, List
 from api import get_completion
-from utils import content_input, path_input, colors
+from utils import content_input, path_input, colors #, user_index_input
 
 class Message(TypedDict):
     role: str
@@ -30,7 +30,12 @@ def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message
     return messages
 
 def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    message = Message(role=args.role, content=content_input())
+    if args.__contains__('prompt') and args.prompt:
+        content = args.prompt
+        args.__delattr__('prompt')
+    else:
+        content = content_input()
+    message = Message(role=args.role, content=content)
     messages.append(message)
     return messages
 
@@ -39,16 +44,23 @@ def prompt_message(messages: List[Message], args: Optional[Dict]) -> List[Messag
     messages.append(Message(role=completion_msg['role'], content=completion_msg['content']))
     return messages
 
-def remove_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    if messages:
-        messages.pop()
-        print("Last message removed.")
-    else:
-        print("No messages to remove.")
+def remove_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    if not messages:
+        print("No messages to edit.")
+        return messages
+    message_index = int(input(f"Enter index of previous message to remove (default is {index}, -2 for last message): ") or index)
+    messages.pop(message_index)
     return messages
 
-def detach_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    return [messages.pop()]
+def detach_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    if not messages:
+        print("No messages to edit.")
+        return messages
+    message_index = int(input(f"Enter index of previous message to detach (default is {index}, -2 for last message): ") or index)
+    # lambda that handles user index input and formats the command name that needs index value
+    # first argument of user input is parsed name from current function 
+    #user_input = lambda x: input(f"Enter index of message to PYTHON_CODE_TO_PARSE_MESSAGE_CMD_FIRST_STRING {inspect.currentframe().f_code.co_name} (default is {x}, -2 for last message): ") or x
+    return [messages.pop(message_index)]
 
 def append_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     messages[-2]['content'] += messages[-1]['content']

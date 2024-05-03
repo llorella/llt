@@ -5,12 +5,30 @@ import datetime
 import argcomplete
 import argparse
 from typing import List, Dict
+from enum import Enum, auto
+
 
 from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message
 from editor import edit_message, include_file, execute_command, convert_text_base64, edit_content_message, edit_role_message
-from utils import Colors, quit_program, tokenize, count_tokens
+from utils import Colors, quit_program, count_tokens, export_messages
 from api import save_config, update_config, api_config, full_model_choices
-from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
+from ll_email import send_email
+from web import process_web_request
+
+#from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
+
+class ArgKey(Enum):
+    LL_FILE = auto()
+    DETACH = auto()
+    FILE_INCLUDE = auto()
+    PROMPT = auto()
+    EXPORT = auto()
+    ROLE = auto()
+    EXEC = auto()
+    WEB = auto()
+    EMAIL = auto()
+    NON_INTERACTIVE = auto()
+
 
 plugins = {
     'load': load_message,
@@ -24,7 +42,8 @@ plugins = {
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
-    'cut': cut_message}
+    'cut': cut_message
+}
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
@@ -40,7 +59,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
     parser.add_argument('--role', '-r', type=str, help="Specify role.", default="user")
 
-    parser.add_argument('--model', '-m', type=str, help="Specify model.", default="gpt-4-0125-preview", choices=full_model_choices)
+    parser.add_argument('--model', '-m', type=str, help="Specify model.", default="gpt-4-turbo", choices=full_model_choices)
     parser.add_argument('--temperature', '-t', type=float, help="Specify temperature.", default=0.9)
     
     parser.add_argument('--max_tokens', type=int, help="Maximum number of tokens to generate.", default=4096)
@@ -55,7 +74,12 @@ def parse_arguments() -> argparse.Namespace:
 
     # All plugin flags here
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
+    parser.add_argument('--export', action='store_true', help="Export messages to a file.")
+    parser.add_argument('--exec', action='store_true', help="Execute the last message")
+    parser.add_argument('--view', action='store_true', help="Print the last message.")
 
+    parser.add_argument('--email', action='store_true', help="Send an email with the last message.")
+    parser.add_argument('--web', action='store_true', help="Fetch a web page and filter tags between paragraphs and code blocks.")
 
     argcomplete.autocomplete(parser)
     return parser.parse_args()
@@ -70,8 +94,8 @@ def log_command(command: str, messages: list, args: dict) -> None:
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(messages[:-1], indent=2)}\n")  
-        logfile.write(f"args: {json.dumps(messages[:-1], indent=2)}\n")
+        logfile.write(f"before_command: {json.dumps(messages, indent=2)}\n")  
+        logfile.write(f"args: {json.dumps(vars(args), indent=2)}\n")
         logfile.write(f"command: {command}\n")
         logfile.write(f"input: TO IMPLEMENT\n")
         logfile.write(f"after_command: {json.dumps(messages[-1], indent=2)}\n")
@@ -90,11 +114,12 @@ test_commands = {
     'h': help_message, 
     'b': convert_text_base64,
     'x': execute_command,
-    'md': export_messages_to_markdown, 
     'sc': save_config,
     'uc': update_config,
     'er': edit_role_message,
-    'ec': edit_content_message}
+    'ec': edit_content_message,
+    'email': send_email,
+    'web': process_web_request}
 
 def get_combined_commands():
     combined_commands = {**plugins, **test_commands}
@@ -103,27 +128,36 @@ def get_combined_commands():
 def main() -> None:
     args = parse_arguments()
     init_directories(args)
-    # args: argparse.Namespace serves as central data structure for all command line arguments. CLI args should be aligned exactly with runtime args.
     messages = list()
-    if args.ll_file:
-        messages = load_message(messages, args)
-    if args.detach:
-        messages = detach_message(messages, args)
-    if args.file_include:
-        messages = include_file(messages, args)
-    if args.prompt:
-        messages.append({'role': 'user', 'content': args.prompt})
-    if args.role == 'system':
-        messages[-1]['role'] = 'system'
-        args.role = 'user'
-    if args.non_interactive:
-        messages = prompt_message(messages, args)
-        if args.ll_file: write_message(messages, args)
+
+    arg_to_function = {
+        ArgKey.LL_FILE: load_message,
+        ArgKey.FILE_INCLUDE: include_file,
+        ArgKey.PROMPT: new_message,
+        ArgKey.DETACH: detach_message,
+        ArgKey.EXPORT: export_messages,
+        ArgKey.EXEC: execute_command,
+        ArgKey.WEB: process_web_request,
+        ArgKey.EMAIL: send_email
+    }
+
+    for arg_key, func in arg_to_function.items():
+        if getattr(args, arg_key.name.lower(), None):
+            messages = func(messages, args)
+
+    if getattr(args, ArgKey.NON_INTERACTIVE.name.lower()):
+        messages = prompt_message(messages.append({'role': 'user', 'content': args.prompt}), args)
+        if getattr(args, ArgKey.LL_FILE.name.lower()):
+            write_message(messages, args)
         quit_program(messages, args)
+    if getattr(args, "view"):
+        print(messages[-1]['content'])
+
     Colors.print_header()
     greeting = f"Hello {os.getenv('USER')}! You are using model {args.model}. Type 'help' for available commands."
     print(f"{greeting}\n")
     command_map = {**get_combined_commands(), **{command[0]: func for command, func in plugins.items() if command[0] not in plugins}}
+    print(command_map)
     while True:
         try:
             cmd = input('llt> ')

@@ -5,6 +5,7 @@ import base64
 import tiktoken
 from PIL import Image
 from math import ceil
+import json
 
 def quit_program(messages: list, args: dict) -> None:
     sys.exit(0)
@@ -157,7 +158,6 @@ media_type_map = {
 language_extension_map = {
     'python': '.py',
     'shell': '.sh',
-    'text': '.txt',
     'markdown': '.md',
     'html': '.html',
     'css': '.css',
@@ -167,6 +167,27 @@ language_extension_map = {
     'c': '.c',
     'cpp': '.cpp',
     'rust': '.rs',
+    'go': '.go',
 }
 
 inverse_kv_map = lambda d: {v: k for k, v in d.items()}
+
+def export_messages(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+    fmt = input("Enter export format (json, txt): ").lower() or "json"
+    output_path = path_input(f"exported_messages.{fmt}", os.getcwd())
+    with open(output_path, 'w') as file:
+        for message in messages:
+            if fmt == "json":
+                file.write(json.dumps(message, indent=4))
+            elif fmt == "txt":
+                file.write(f"role: {message['role']}\ncontent: {message['content']}\n\n")
+            elif fmt == "md":
+                print(f"md support coming soon via logcmd_llt_branch_1 (llt created branch for auto generated plugins)")
+                """ from logcmd_llt_branch_1 import export_messages_to_markdown
+                export_messages_to_markdown(messages, args) """
+            else:
+                print("Invalid export format. Please choose from json, txt, or md.")
+            
+    print(f"Messages exported to text file at {output_path}")
+ 
+ 
