@@ -90,7 +90,8 @@ def edit_content(messages: list[Message], args: dict, index: int = -1) -> List[M
     return messages
 
 def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll_file)[0])
+    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
+    # We create a directory for execution files that corresspond to an ll thread. The kernel of some 'agent' space for navigating a file system.
     os.makedirs(default_exec_dir, exist_ok=True)
     exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
     # use descriptive handlers for code blocks

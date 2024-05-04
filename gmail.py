@@ -2,6 +2,7 @@ import os, sys
 import json
 import base64
 from dataclasses import dataclass
+from typing import List, Dict
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -50,19 +51,18 @@ def create_message(email: Email):
     raw = raw.decode()
     return {'raw': raw}
 
-def send_email(messages: list, args: dict):
+def send_email(messages: List[Dict], args: Dict)-> List[Dict]:
     config = load_config(os.path.expanduser('~/llt/test_email.json'))
     email = Email(to=config['to'], subject=config['subject'].format(subject="message from llt"), message=messages[-1]['content'])
-    print(f"Sending email to {email.to} with subject {email.subject}:\n{email.message}")
     try:
         email_body = create_message(email)
         client = build('gmail', 'v1', credentials=get_credentials())
-        response = client.users().messages().send(userId="me", body=messages[-1]['content']).execute()
+        response = client.users().messages().send(userId="me", body=email_body).execute()
         print(f'Message sent successfully: {response["id"]}')
         print(f'Other details:\n{response}')
     except HttpError as error:
         print(f'An error occurred: {error}')
-    return email_body
+    return {'role': 'user', 'content': f"Email sent to {email.to} with subject {email.subject}.\nDetails:\n{response}"}
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
