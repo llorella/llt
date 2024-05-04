@@ -196,18 +196,19 @@ def export_messages(messages: list[dict[str, any]], args: dict) -> list[dict[str
                 print(f"md support coming soon via logcmd_llt_branch_1 (llt created branch for auto generated plugins)")
                 """ from logcmd_llt_branch_1 import export_messages_to_markdown
                 export_messages_to_markdown(messages, args) """
-            else:
+            else:   
                 print("Invalid export format. Please choose from json, txt, or md.")
             
     print(f"Messages exported to text file at {output_path}")
  
 def get_valid_index(messages, prompt, default=-1):
     try:
-        idx = int(input(f"Enter index of message to {prompt} (default is {default}, -2 for last message): ") or default)
-        idx = idx % len(messages)  # support negative indexing
+        idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
+        if not idx: return default
+        idx = int(idx) % len(messages)  # support negative indexing
     except ValueError:
         print("Invalid input. Using default.")
         idx = default
     if not -len(messages) <= idx < len(messages):
         raise IndexError("Index out of range. No operation will be performed.")
-    return idx
+    return idx  

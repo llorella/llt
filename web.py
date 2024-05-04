@@ -7,6 +7,9 @@ import json
 import re
 from typing import List, Dict
 
+from utils import get_valid_index
+from message import Message
+
 CodeBlock = namedtuple('CodeBlock', ['description', 'code', 'language'])
 
 def fetch_html(url):
@@ -52,12 +55,8 @@ def valid_url(url):
     else:
         return False
     
-from message import Message
 def process_web_request(messages: List[Message], args: Dict, index: int = -1) -> list[dict[str, any]]:
-    if not messages or abs(index) > len(messages): 
-        messages.append(Message(role='user', 
-                                content="Message edit error. Either index is out of range or no messages to edit."))
-    message_index = int(input(f"Enter index of message to fetch url from.") or index)
+    message_index = get_valid_index(messages, "fetch url from", index)
     messages[message_index]['content'] = get_code_blocks_from_tags(find_tags(html_content=fetch_html(messages[message_index]['content']), tag='pre') 
                                                                    if valid_url(messages[message_index]['content']) 
                                                                    else "Invalid URL. Please provide a valid URL.")
