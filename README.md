@@ -1,6 +1,15 @@
-llt is a UNIX-like terminal application that allows users to interact with a language model using commands included in the plugins definition in main.py. It is designed to be easily extensible and customizable, allowing users to add their own commands and functionality to the application. Commands range from simple actions like loading a message history to more complex tasks like editing code blocks or including images in the conversation. llt is a work in progress and is still in development, but can reliably serve as a functional tool as both a natural language shell and non-interactive UNIX command. 
+# About
+```shell
+llt -l llt/README_demo.ll -f LLT_ABOUT_SNIPPET.txt --view 
+```
 
-### Installation
+llt is a UNIX command for applying a set of transformations on an ll file, a language log consisting of messages that have lead to the current state. The current state is represented by an llt created dictionary that corresponds to the current ll name. llt, via a flexible plugin ecosystem, can apply many successive transformations to the current state (virtual filesystem), recorded in the ll file, and reach some user decided threshold of completion of task. Getting from a starting prompt to an end goal is a lot of work, and requires lots of editing, test and executing code, prompting, web searching, and more. Thankfully, llt has plugins for every one of those things and more, which can exposed either at runtime in an interactive shell or non-interactively at command time with specified plugin directives. 
+
+```shell
+llt -l llt/SETUP.ll -f SETUP.md -p "Return a markdown list that outlines setting up a github repo at https://github.com/llorella/llt.git by running git clone, installing required dependencies, and setting LLT_PATH environment variable."
+```
+
+## Installation
 
 1. Clone the repository:
    ```
@@ -38,38 +47,42 @@ python main.py [options]
 Optional flags provide additional customization:
 
 ```
-usage: main.py [-h] [--ll_file LL_FILE] [--file_include FILE_INCLUDE] [--prompt PROMPT] [--role ROLE]
-               [--model MODEL] [--temperature TEMPERATURE] [--image_path IMAGE_PATH]
+usage: llt [-h] [--ll LL_FILE] [--file FILE_INCLUDE] [--image_path IMAGE_PATH] [--prompt PROMPT] [--role ROLE]
+               [--model MODEL] [--temperature TEMPERATURE] [--max_tokens MAX_TOKENS] [--logprobs LOGPROBS] [--top_p TOP_P]
                [--cmd_dir CMD_DIR] [--exec_dir EXEC_DIR] [--ll_dir LL_DIR]
-               [--non_interactive]
+               [--non_interactive] [--detach] [--export]
+               [--exec] [--view] [--email] [--web]
 
 llt, little language tool and terminal 
 
 options:
-  -h, --help            show this help message and exit
-  --ll_file LL_FILE, -l LL_FILE
+  --help, -h           show this help message and exit
+  --ll, -l LL_FILE
                         Language log file. List of natural language messages stored as JSON.
-  --file_include FILE_INCLUDE, -f FILE_INCLUDE
-                        Content file to include in conversation. 
+  --file, -f FILE_INCLUDE
+                        Read content from a file and include it in the ll.
+  --image_path IMAGE_PATH
   --prompt PROMPT, -p PROMPT
                         Prompt string.
   --role ROLE, -r ROLE  Specify role.
-  --model MODEL, -m MODEL
-                        Specify model.
-  --temperature TEMPERATURE, -t TEMPERATURE
-
+ --model, -m MODEL
+ --temperature, -t TEMPERATURE
                         Specify temperature.
+  --max_tokens MAX_TOKENS
+                        Maximum number of tokens to generate.
+  --logprobs LOGPROBS   Include log probabilities in the output, up to the specified number of tokens.
+  --top_p TOP_P         Sample from top P tokens.
+  --cmd_dir CMD_DIR
+  --exec_dir EXEC_DIR
+  --ll_dir LL_DIR
   --non_interactive, -n
                         Run in non-interactive mode.
-
-  --image_path IMAGE_PATH
-                        Specify the path to an image file.
-  --cmd_dir 
-                        Specify the command history directory (default: `commands`).
-  --exec_dir EXEC_DIR
-                        Specify the root directory for execution files (default: `exec`).
-  --ll_dir LL_DIR
-                        Specify the directory for message history (default: `msg`).
+  --detach              Pop last message from given ll.
+  --export              Export messages to a file.
+  --exec                Execute the last message
+  --view                Print the last message.
+  --email               Send an email with the last message.
+  --web                 Fetch a web page and filter tags between paragraphs and code blocks.
 ```
 
 
