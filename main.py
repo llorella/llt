@@ -8,9 +8,9 @@ from typing import List, Dict
 from enum import Enum, auto
 import traceback
 
-from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message, change_role
-from editor import code_message, include_file, execute_command, edit_content, convert_text_base64
-from utils import Colors, quit_program, count_tokens, export_messages
+from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message, change_role, insert_message
+from editor import code_message, include_file, execute_command, edit_content, copy_to_clipboard
+from utils import Colors, quit_program, tokenize, export_messages, convert_text_base64
 from api import save_config, update_config, api_config, full_model_choices
 from gmail import send_email
 from web import process_web_request
@@ -27,6 +27,7 @@ class ArgKey(Enum):
     EXEC = auto()
     WEB = auto()
     EMAIL = auto()
+    BASE64 = auto()
     VIEW = auto()
     NON_INTERACTIVE = auto()
     WRITE = auto()
@@ -40,6 +41,7 @@ plugins = {
     'edit': code_message,
     'file': include_file,
     'quit': quit_program,
+    'insert': insert_message,
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
@@ -81,7 +83,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--write', action='store_true', help="Write conversation to file (for non-interactive mode).")
 
     parser.add_argument('--email', action='store_true', help="Send an email with the last message.")
-    parser.add_argument('--web', action='store_true', help="Fetch a web page and filter tags between paragraphs and code blocks.")
+    parser.add_argument('--web', type=str, help="Dump a list of user specified tags and their contents to next message.", default=None, choices=['pre', 'p'])
 
     argcomplete.autocomplete(parser)
     return parser.parse_args()
@@ -92,8 +94,9 @@ def init_directories(args: argparse.Namespace) -> None:
 
 def log_command(command: str, messages: List[Dict], args: dict) -> None:
     if command.startswith('v') or command.startswith('h') or not messages: return
-    tokens = count_tokens(messages, args) if messages else 0
-    log_path = os.path.join(args.cmd_dir, os.path.splitext(args.ll)[0] + ".log")
+    tokens = tokenize(messages, args) if messages else 0
+    log_path = os.path.join(args.cmd_dir, os.path.splitext(os.path.basename(args.ll))[0] + ".log")
+    if not os.path.exists(log_path): os.makedirs(os.path.dirname(log_path), exist_ok=True)
     with open(log_path, 'a') as logfile:
         logfile.write(f"COMMAND_START\n")
         logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
@@ -138,7 +141,10 @@ def get_combined_commands():
 
 def run_non_interactive(messages: List[Dict], args: argparse.Namespace) -> None:
     prompt_message(messages, args)
-    if args.write: write_message(messages, args)
+    # args.ll can also be used as flag for writing to file if there exists an ll file
+    # if args.write: write_message(messages, args)
+    if args.ll: write_message(messages, args)
+    copy_to_clipboard(args.ll)
     quit_program(messages, args)
 
 user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
@@ -157,6 +163,7 @@ def main() -> None:
         ArgKey.EXEC: execute_command,
         ArgKey.WEB: process_web_request,
         ArgKey.EMAIL: send_email,
+        ArgKey.BASE64: convert_text_base64,
         ArgKey.VIEW: view_message,
         ArgKey.NON_INTERACTIVE: run_non_interactive,
         ArgKey.WRITE: write_message
@@ -175,8 +182,7 @@ def main() -> None:
             if cmd in command_map:
                 messages = command_map[cmd](messages, args)
                 log_command(cmd, messages, args)
-            else:
-                messages.append({'role': args.role, 'content': f"{cmd}"})
+            elif cmd: messages.append({'role': args.role, 'content': f"{cmd}"})
         except KeyboardInterrupt:
             print("\nExiting...")
             break

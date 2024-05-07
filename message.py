@@ -22,7 +22,6 @@ def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message
     ll_path = path_input(args.ll, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.ll)
     with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
-    args.ll = ll_path
     return messages
 
 def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
@@ -54,20 +53,25 @@ def append_message(messages: List[Message], args: Optional[Dict] = None) -> List
     messages.pop()
     return messages
 
+def insert_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    message_index = get_valid_index(messages, "insert", index)
+    messages.insert(message_index, Message(role=args.role, content=args.prompt))
+    return messages
+
 def view_message(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:
-    def view_helper(role: str, content: str) -> str:
-        if type(content) != str: print("Can't view image messages yet. On todo list.")
-        elif not messages: return messages
+    def view_helper(message: Message) -> str:
+        role, content = message['role'], message['content']
+        if type(content) == list: content = "Image data."
         color = colors.get(role, colors['reset'])
         print(f"{color}[{role.capitalize()}]{colors['reset']}")
         for line in content.split('\\n'): print(line)
         print(f"{color}[/{role.capitalize()}]{colors['reset']}")
     if not messages: return messages
-    message_index = get_valid_index(messages, "view", index)
+    message_index = 0 # can also set message_index = get_valid_index(messages, "view", index), based on preference
     start, end = 0, len(messages)
     if message_index < 0: start, end = len(messages) + index, len(messages)
     elif message_index > 0: start, end = index, index + 1
-    for i in range(start, end): view_helper(messages[i]['role'], messages[i]['content'])
+    for i in range(start, end): view_helper(messages[i])
     print(f"\nTotal messages shown: {end - start}")
     return messages
 
@@ -81,4 +85,4 @@ def cut_message(messages: List[Message], args: Optional[Dict] = None) -> List[Me
 def change_role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "change role of", index)
     messages[message_index]['role'] = role_input(messages[message_index]['role'])   
-    return messages    
+    return messages

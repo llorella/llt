@@ -1,29 +1,26 @@
 from openai import OpenAI
 from mistralai.client import MistralClient
 import anthropic
+from groq import Groq
+
 import time
 import os
-import yaml
 import subprocess
+import yaml
 
+from typing import List, Dict
 def get_start_time():
     return time.time()
 
-mistral_client = MistralClient()
-anthropic_client = anthropic.Client()
-openai_client = OpenAI()
-
-def save_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+def save_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
-    if config_path.lower() == 'exit':
-        print("Config save canceled.")
-        return messages
+    if config_path.lower() == 'exit' or not config_path: return messages
     with open(config_path, 'w') as config_file:
         yaml.dump(vars(args), config_file, default_flow_style=False)
     print(f"Config saved to {config_path}")
     return messages
 
-def update_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+def update_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     for arg in vars(args):
         print(f"{arg}: {getattr(args, arg)}")
     try:
@@ -33,17 +30,23 @@ def update_config(messages: list[dict[str, any]], args: dict) -> list[dict[str, 
             return messages
         current_value = getattr(args, key)
         new_value = input(f"Current value for {key}: {current_value}\nEnter new value for {key} (or 'exit' to cancel): ")
-        if not new_value.lower() == 'exit': return messages
-        casted_value = type(current_value)(new_value)
+        if new_value.lower() == 'exit' or not new_value: return messages
+        if isinstance(current_value, int):
+            casted_value = int(new_value)
+        elif isinstance(current_value, float):
+            casted_value = float(new_value)
+        elif isinstance(current_value, str):
+            casted_value = str(new_value)
+        else:
+            casted_value = new_value
         setattr(args, key, casted_value)
         print(f"Config updated: {key} = {casted_value}")
     except ValueError as e:
         print(f"Invalid value provided. Error: {e}")
     except Exception as e:
         print(f"An error occurred while updating the configuration. Error: {e}")
-    
     return messages
-
+    
 def load_config(path: str):
     with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
@@ -53,7 +56,7 @@ full_model_choices = [f"{model_family}-{model}" for provider in api_config['mode
                       for model_family in api_config['models'][provider] 
                       for model in api_config['models'][provider][model_family]]
 
-def collect_messages(completion_stream: dict):
+def collect_messages(completion_stream: Dict):
     role, collected_messages = "assistant",[]
     for chunk in completion_stream:
         chunk_message = chunk.choices[0].delta.content
@@ -63,16 +66,17 @@ def collect_messages(completion_stream: dict):
     full_reply_content = ''.join(collected_messages)
     return {'role': role, 'content': full_reply_content}
 
-def get_completion(messages: list[dict[str, any]], args: dict) -> dict:
+def get_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
     providers = api_config['models']
-    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion, get_local_completion]}
+    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion, get_groq_completion, get_local_completion]}
     for provider, families in providers.items():
         full_model_names = [f"{family}-{model}" for family in families for model in families[family]]
         if args.model in full_model_names and provider in func_map:
             return func_map[provider](messages, args) 
     raise ValueError(f"Invalid model: {args.model}")
 
-def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
+def get_openai_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
+    openai_client = OpenAI()
     start_time = get_start_time()
     completion = openai_client.chat.completions.create(
         messages=messages,
@@ -84,7 +88,8 @@ def get_openai_completion(messages: list[dict[str, any]], args: dict) -> dict:
     )
     return collect_messages(completion)
 
-def get_mistral_completion(messages: list[dict[str, any]], args: dict) -> dict:
+def get_mistral_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
+    mistral_client = MistralClient()
     start_time = get_start_time()
     completion = mistral_client.chat_stream(
         messages=messages,
@@ -94,7 +99,8 @@ def get_mistral_completion(messages: list[dict[str, any]], args: dict) -> dict:
     )
     return collect_messages(completion)
 
-def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict:
+def get_anthropic_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
+    anthropic_client = anthropic.Client()
     if messages[0]['role'] == 'system':
         system_prompt = messages[0]['content']
         messages = messages[1:]
@@ -114,11 +120,23 @@ def get_anthropic_completion(messages: list[dict[str, any]], args: dict) -> dict
             response_content += text
     return {'role': 'assistant', 'content': response_content+"\n\n"}
 
-def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
+def get_groq_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
+    groq_client = Groq()
+    start_time = get_start_time()
+    completion = groq_client.chat.completions.create(
+        model=args.model,
+        messages=messages,
+        temperature=args.temperature,
+        max_tokens=4096, 
+        stream=True
+    )
+    return collect_messages(completion)
+
+def get_local_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
     llamacpp_root_dir, llamacpp_log_dir = os.getenv('LLAMACPP_DIR'), os.getenv('LLAMACPP_LOG_DIR')
     model_options = api_config['llamacpp'][args.model.split('-')[0].lower()]
     model_path = api_config['local_llms_dir'] + args.model + '.gguf'
-    def format_message(messages: list[dict[str, any]]) -> str:
+    def format_message(messages: List[Dict[str, any]]) -> str:
         prompt_string = model_options['prompt-prefix']
         for i, msg in enumerate(messages):
             prompt_string += model_options['format'].format(role=msg['role'], content=msg['content'])
@@ -126,7 +144,7 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
         return prompt_string
     command = [llamacpp_root_dir + 'main','-m', str(model_path), 
                 '--color', '--temp', str(args.temperature), '-n', f"{str(args.max_tokens)}",
-                '-p', format_message(messages), 
+                '-p', format_message(messages),
                 '-r', f"{model_options['stop']}", '-ld', llamacpp_log_dir]
     try:
         try: 
@@ -136,7 +154,7 @@ def get_local_completion(messages: list[dict[str, any]], args: dict) -> dict:
                                     universal_newlines=True, 
                                     cwd=os.getenv('HOME'))
             print("\n")
-            log_files = [os.path.join(llamacpp_log_dir, f) for f in os.listdir(llamacpp_log_dir) if os.path.isfile(os.path.join(llamacpp_log_dir, f))]
+            log_files = [os.path.join(llamacpp_log_dir, f) for f in os.Listdir(llamacpp_log_dir) if os.path.isfile(os.path.join(llamacpp_log_dir, f))]
             return {'role': 'assistant', 'content': str(load_config(max(log_files, key=os.path.getmtime))['output'])}
         except KeyboardInterrupt:
             print("KeyboardInterrupt")

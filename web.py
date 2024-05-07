@@ -1,5 +1,4 @@
-#bin/python
-from bs4 import BeautifulSoup
+#!/usr/bin/python3
 import sys
 from collections import namedtuple
 import requests
@@ -7,12 +6,14 @@ import json
 import re
 from typing import List, Dict
 
+from bs4 import BeautifulSoup, Tag
+
 from utils import get_valid_index
 from message import Message
 
 CodeBlock = namedtuple('CodeBlock', ['description', 'code', 'language'])
 
-def fetch_html(url):
+def fetch_html(url: str) -> str:
     try:
         response = requests.get(url)
         response.raise_for_status()  
@@ -26,7 +27,7 @@ def find_tags(html_content, tag: str = 'p', attributes: dict = {}):
     paragraphs = soup.find_all(tag, attributes)
     return paragraphs
 
-def find_code_block_description(code_block):
+def find_code_block_description(code_block: Tag) -> str:
     paragraphs = []
     parent, i = code_block, 0
     while i < 5:
@@ -37,7 +38,7 @@ def find_code_block_description(code_block):
     description = "\n".join(reversed(paragraphs))
     return description
     
-def get_code_blocks_from_tags(tags) -> list[CodeBlock]:
+def get_code_blocks_from_tags(tags: List[Tag]) -> List[CodeBlock]:
     blocks_list = []
     for tag in tags:
         description = find_code_block_description(tag)
@@ -46,7 +47,7 @@ def get_code_blocks_from_tags(tags) -> list[CodeBlock]:
         blocks_list.append(CodeBlock(description=description, code=code, language=language))
     return blocks_list
 
-def valid_url(url):
+def valid_url(url: str) -> bool:
     pattern = re.compile(
         r'^(https?://)[\w\-]+(\.[\w\-]+)+([\w\-\.,@?^=%&:/~\+#]*[\w\-\@?^=%&/~\+#])?$'
     )
@@ -55,21 +56,33 @@ def valid_url(url):
     else:
         return False
     
-def process_web_request(messages: List[Message], args: Dict, index: int = -1) -> list[dict[str, any]]:
-    message_index = get_valid_index(messages, "fetch url from", index)
-    messages[message_index]['content'] = get_code_blocks_from_tags(find_tags(html_content=fetch_html(messages[message_index]['content']), tag='pre') 
-                                                                   if valid_url(messages[message_index]['content']) 
-                                                                   else "Invalid URL. Please provide a valid URL.")
+def process_web_request(messages: List[Message], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    message_index = get_valid_index(messages, "fetch url from", index)  # prompt is any valid verb that precedes the preposition
+    html_content = fetch_html(messages[message_index]['content']) 
+    tags = find_tags(html_content, tag=args.web)
+    content = []
+    if args.web == 'pre': content = [f"Description: {description}\n{(language+' ' if language else '')}code block:\n{code}" 
+                                    for description, code, language in get_code_blocks_from_tags(tags)]
+    elif args.web == 'p': content = [tag.get_text() for tag in tags]
+    messages.append(Message(role=args.role, content="\n".join(content)))
     return messages
 
-def main():
-    if len(sys.argv) == 2:
+def main(): 
+    if len(sys.argv) >= 2:
         url = sys.argv[1]
         if not valid_url(url):
             print("Invalid URL. Please provide a valid URL.")
             return 
         print(f"Fetching URL: {url}")
-        print(json.dumps(process_web_request([{'role': 'user', 'content': url}], None, 0), indent=2))
+        if len(sys.argv) == 3:
+            tag = sys.argv[2]
+            if tag not in ['pre', 'p']:
+                print("Tag not supported (yet). Please provide a valid tag.")
+                return
+        else: tag = 'pre'
+        from argparse import Namespace
+        args = Namespace(role='user', web=tag)
+        print(json.dumps(process_web_request([Message(role='user', content=url)], args, 0), indent=2))
     else:
         print("Usage: script.py <url>")
     return 0
