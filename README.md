@@ -86,8 +86,7 @@ options:
 ```
 
 ### Video Example
-[Screencast from 05-28-2024 08:58:01 PM.webm](https://github.com/llorella/llt/assets/110218399/be7f9107-d58e-4724-9b7c-230c1fb63fd3)
-
+[llt_exa_search.webm](https://github.com/llorella/llt/assets/110218399/33695be6-bb02-4bfe-a87e-f405df03e4cb)
 
 ### Commands and Examples:
 
