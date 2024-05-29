@@ -85,6 +85,8 @@ options:
   --web                 Fetch a web page and filter tags between paragraphs and code blocks.
 ```
 
+### Video Example
+[Screencast from 05-28-2024 08:58:01 PM.webm](https://github.com/llorella/llt/assets/110218399/be7f9107-d58e-4724-9b7c-230c1fb63fd3)
 
 
 ### Commands and Examples:
