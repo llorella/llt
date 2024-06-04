@@ -8,24 +8,28 @@ from typing import List, Dict
 from enum import Enum, auto
 import traceback
 
-from message import load_message, write_message, view_message, new_message, prompt_message, remove_message, detach_message, append_message, cut_message, change_role, insert_message
+from message import load_message, write_message, view_message, new_message, remove_message, detach_message, append_message, cut_message, change_role, insert_message
 from editor import code_message, include_file, execute_command, edit_content, copy_to_clipboard
-from utils import Colors, quit_program, tokenize, export_messages, convert_text_base64
-from api import save_config, update_config, api_config, full_model_choices
+from utils import Colors, quit_program, tokenize, export_messages, convert_text_base64, get_valid_index, save_config, update_config
+from api import api_config, full_model_choices, get_completion
 from gmail import send_email
 from web import process_web_request
 
 #from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
+
+from exa import llt_plugin
 
 class ArgKey(Enum):
     LL = auto()
     DETACH = auto()
     FILE = auto()
     PROMPT = auto()
+    COMPLETE = auto()
     EXPORT = auto()
     ROLE = auto()
     EXEC = auto()
-    WEB = auto()
+    SEARCH = auto()
+    URL = auto()
     EMAIL = auto()
     BASE64 = auto()
     VIEW = auto()
@@ -36,8 +40,8 @@ plugins = {
     'load': load_message,
     'write': write_message,
     'view': view_message,
-    'new': new_message,
-    'prompt': prompt_message,
+    'prompt': new_message,
+    'complete': get_completion,
     'edit': code_message,
     'file': include_file,
     'quit': quit_program,
@@ -45,7 +49,8 @@ plugins = {
     'remove': remove_message,
     'detach': detach_message,
     'append': append_message,
-    'cut': cut_message
+    'cut': cut_message,
+    'exa': llt_plugin
 }
 
 def parse_arguments() -> argparse.Namespace:
@@ -76,14 +81,16 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
 
     # All plugin flags here
+    parser.add_argument('--complete', action='store_true', help="Complete the last message.")
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
     parser.add_argument('--export', action='store_true', help="Export messages to a file.")
     parser.add_argument('--exec', action='store_true', help="Execute the last message")
     parser.add_argument('--view', action='store_true', help="Print the last message.")
     parser.add_argument('--write', action='store_true', help="Write conversation to file (for non-interactive mode).")
 
+    parser.add_argument('--search', action='store_true', help="Exa search plugin.")
     parser.add_argument('--email', action='store_true', help="Send an email with the last message.")
-    parser.add_argument('--web', type=str, help="Dump a list of user specified tags and their contents to next message.", default=None, choices=['pre', 'p'])
+    parser.add_argument('--url', type=str, help="Dump a list of user specified tags and their contents to next message.", default=None, choices=['pre', 'p'])
 
     argcomplete.autocomplete(parser)
     return parser.parse_args()
@@ -140,15 +147,14 @@ def get_combined_commands():
     return combined    
 
 def run_non_interactive(messages: List[Dict], args: argparse.Namespace) -> None:
-    prompt_message(messages, args)
-    # args.ll can also be used as flag for writing to file if there exists an ll file
-    # if args.write: write_message(messages, args)
-    if args.ll: write_message(messages, args)
-    copy_to_clipboard(args.ll)
+    if args.ll and args.write: write_message(messages, args)
     quit_program(messages, args)
 
 user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
-
+#  add buffer for any input that is not a command nor a message
+#  only available for interactive mode user input spec: function type that invokes some input fn with format string specific to plugin command invocation
+#  i.e., load and write calls input fn with format string "Enter file path (default is {default_file}): "
+#  n cmd and/or freeforn at the cmd line, "the meta-command" is the else clause in main cmd loop
 def main() -> None:
     args = parse_arguments()
     init_directories(args)
@@ -160,10 +166,12 @@ def main() -> None:
         ArgKey.PROMPT: new_message,
         ArgKey.DETACH: detach_message,
         ArgKey.EXPORT: export_messages,
+        ArgKey.SEARCH: llt_plugin,
         ArgKey.EXEC: execute_command,
-        ArgKey.WEB: process_web_request,
+        ArgKey.URL: process_web_request,
         ArgKey.EMAIL: send_email,
         ArgKey.BASE64: convert_text_base64,
+        ArgKey.COMPLETE: get_completion,
         ArgKey.VIEW: view_message,
         ArgKey.NON_INTERACTIVE: run_non_interactive,
         ArgKey.WRITE: write_message

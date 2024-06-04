@@ -74,7 +74,7 @@ def extract_code_blocks(markdown_text: str) -> List[Dict]:
     return [block for block in code_blocks if block["code"].strip()]
 
 def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    message_index = get_valid_index(messages, "edit content of", index) # prompt is any valid verb that precedes the preposition
+    message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else -1 # prompt is any valid verb that precedes the preposition
     action = input(f"{input_action_string(['edit', 'append', 'copy'])}").strip().lower()
     if action in ('e', 'a'):
         with open("tmp.txt", 'w') as f:
@@ -107,17 +107,16 @@ def include_file(messages: List[Message], args: Dict) -> List[Message]:
     else: file_path = path_input(args.file, os.getcwd()) # ask user for file path, in interactive mode
     (_, ext) = os.path.splitext(file_path)
     if ext in ['.png', '.jpg', '.jpeg']: 
-        encoded_image = encode_image(file_path)
-        messages.append(Message(role='user', content=[{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encoded_image}"}}]))
+        messages.append(Message(role='user', content=[{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]))
     else:
         with open(file_path, 'r') as file:
             data = file.read()
-        language = inverse_kv_map(language_extension_map)[ext.lower()] if ext else None
+        language = inverse_kv_map(language_extension_map)[ext.lower()] if ext in language_extension_map else None
         messages.append(Message(role='user', content=f"{'```' + language if language else ''}\n{data}\n{'```' if language else ''}"))
     return messages
 
 def execute_command(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    message_index = get_valid_index(messages, "execute command of", index)
+    message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
     code_blocks = extract_code_blocks(messages[message_index]['content'])
     for code_block in code_blocks:
         if code_block['language'] == 'bash' or code_block['language'] == 'shell' or not code_block['language']:

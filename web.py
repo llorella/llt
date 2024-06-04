@@ -57,7 +57,7 @@ def valid_url(url: str) -> bool:
         return False
     
 def process_web_request(messages: List[Message], args: Dict, index: int = -1) -> List[Dict[str, any]]:
-    message_index = get_valid_index(messages, "fetch url from", index)  # prompt is any valid verb that precedes the preposition
+    message_index = get_valid_index(messages, "fetch url from", index) if not args.non_interactive else index  # prompt is any valid verb that precedes the preposition
     html_content = fetch_html(messages[message_index]['content']) 
     tags = find_tags(html_content, tag=args.web)
     content = []
