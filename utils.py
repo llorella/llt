@@ -7,7 +7,9 @@ from PIL import Image
 from math import ceil
 import json
 
-def quit_program(messages: list, args: dict) -> None:
+from typing import List, Dict
+
+def quit_program(Dicts: List, args: Dict) -> None:
     sys.exit(0)
 
 colors = {  
@@ -27,7 +29,7 @@ class Colors:
         print(color + text + Colors.RESET)
 
     @staticmethod
-    def pretty_print_dict(message: dict):
+    def pretty_print_dict(message: Dict):
         formatted_message = pprint.pformat(message, indent=4)
         Colors.print_colored(formatted_message, Colors.WHITE)
 
@@ -38,8 +40,7 @@ class Colors:
         Colors.print_colored("***** Welcome to llt, the little language terminal. *****", Colors.WHITE)
         Colors.print_colored("*********************************************************", Colors.YELLOW)
         Colors.print_colored("*********************************************************\n", Colors.YELLOW)
-
-
+    
 def content_input() -> str:
     print("Enter content below.")
     Colors.print_colored("*********************************************************", Colors.YELLOW)
@@ -111,44 +112,18 @@ def is_base64(text):
     except:
         return False
     
-def tokenize(messages: list[dict[str, any]], args: dict) -> int:
+def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
     num_tokens, content = 0, ""
-    for message in messages:
-        if type(message['content']) == list:
-            for i in range(len(message['content'])):
-                if message['content'][i]['type'] == 'text':
-                    text = message['content'][i]['text']
-                    content+=text
-                elif message['content'][i]['type'] == 'image_url':
-                    if (os.path.splitext(args.file_include)[1] in supported_images)\
-                    and is_base64(message['content'][i]['image_url']['url']):
-                        num_tokens += count_image_tokens(os.path.expanduser(args.file_include))
-                        print(f"Image tokens: {num_tokens}")
-        else:
-            content+=message['content']
-    encoding = tiktoken.encoding_for_model("gpt-4")
-    num_tokens += 4 + len(encoding.encode(content))
-    print(f"Tokens: {num_tokens}")
-    return num_tokens
-     
-
-def count_tokens(messages: list[dict[str, any]], args: dict) -> int:
-    num_tokens, content = 0, ""
-    for message in messages:
-        msg_content = message['content']
+    for idx in range(len(messages)):
+        msg_content = messages[idx]['content']
         if type(msg_content) == list:
             for i in range(len(msg_content)):
-                if msg_content[i]['type'] == 'text':
-                    text = msg_content[i]['text']
-                    content+=text
-                elif msg_content[i]['type'] == 'image_url':
-                    if (os.path.splitext(args['file_include'])[1] in supported_images)\
-                    and is_base64(msg_content[i]['image_url']['url']):
-                        num_tokens += count_image_tokens(os.path.expanduser(args['file_include']))
-                        print(f"Image tokens: {num_tokens}")
-        else:
-            content+=message['content']
-
+                msg_type = msg_content[i]['type']
+                msg_value = msg_content[i][msg_type]
+                if msg_type == 'text': content+=msg_value
+                elif msg_type== 'image_url': num_tokens += count_image_tokens(msg_value['url'])
+        else: 
+            content+=msg_content
     encoding = tiktoken.encoding_for_model("gpt-4")
     num_tokens += 4 + len(encoding.encode(content))
     print(f"Tokens: {num_tokens}")
@@ -156,15 +131,13 @@ def count_tokens(messages: list[dict[str, any]], args: dict) -> int:
 
 def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
-                return base64.b64encode(image_file.read()).decode('utf-8')
+            return base64.b64encode(image_file.read()).decode('utf-8')
     
-supported_images = ['.png', '.jpg', '.jpeg']
-
-media_type_map = {
-    'png': 'image/jpeg',
-    'image': 'image/jpeg',
-    'image_url': 'image/jpeg'
-}
+def convert_text_base64(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    message_index = get_valid_index(messages, "convert text to base64", index) if not args.non_interactive else index
+    content = messages[message_index]['content']
+    messages[message_index]['content'] = base64.b64encode(content.encode('utf-8')).decode('utf-8')
+    return messages
 
 language_extension_map = {
     'python': '.py',
@@ -179,11 +152,27 @@ language_extension_map = {
     'cpp': '.cpp',
     'rust': '.rs',
     'go': '.go',
+    'csv': '.csv',
+    'log': '.log',
+    'json': '.ll',
+    'json': '.json',
 }
 
 inverse_kv_map = lambda d: {v: k for k, v in d.items()}
+ 
+def get_valid_index(messages, prompt, default=-1):
+    try:
+        idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
+        if not idx: return default
+        idx = int(idx) % len(messages)  # support negative indexing
+    except ValueError:
+        print("Invalid input. Using default.")
+        idx = default
+    if not -len(messages) <= idx < len(messages):
+        raise IndexError("Index out of range. No operation will be performed.")
+    return idx  
 
-def export_messages(messages: list[dict[str, any]], args: dict) -> list[dict[str, any]]:
+def export_messages(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     fmt = input("Enter export format (json, txt): ").lower() or "json"
     output_path = path_input(f"exported_messages.{fmt}", os.getcwd())
     with open(output_path, 'w') as file:
@@ -196,18 +185,42 @@ def export_messages(messages: list[dict[str, any]], args: dict) -> list[dict[str
                 print(f"md support coming soon via logcmd_llt_branch_1 (llt created branch for auto generated plugins)")
                 """ from logcmd_llt_branch_1 import export_messages_to_markdown
                 export_messages_to_markdown(messages, args) """
-            else:
+            else:   
                 print("Invalid export format. Please choose from json, txt, or md.")
             
     print(f"Messages exported to text file at {output_path}")
- 
-def get_valid_index(messages, prompt, default=-1):
+
+def save_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
+    if config_path.lower() == 'exit' or not config_path: return messages
+    with open(config_path, 'w') as config_file:
+        yaml.dump(vars(args), config_file, default_flow_style=False)
+    print(f"Config saved to {config_path}")
+    return messages
+
+def update_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    for arg in vars(args):
+        print(f"{arg}: {getattr(args, arg)}")
     try:
-        idx = int(input(f"Enter index of message to {prompt} (default is {default}, -2 for last message): ") or default)
-        idx = idx % len(messages)  # support negative indexing
-    except ValueError:
-        print("Invalid input. Using default.")
-        idx = default
-    if not -len(messages) <= idx < len(messages):
-        raise IndexError("Index out of range. No operation will be performed.")
-    return idx
+        key = input("Enter the name of the config option to update: ")
+        if not hasattr(args, key):
+            print(f"Config {key} does not exist.")
+            return messages
+        current_value = getattr(args, key)
+        new_value = input(f"Current value for {key}: {current_value}\nEnter new value for {key} (or 'exit' to cancel): ")
+        if new_value.lower() == 'exit' or not new_value: return messages
+        if isinstance(current_value, int):
+            casted_value = int(new_value)
+        elif isinstance(current_value, float):
+            casted_value = float(new_value)
+        elif isinstance(current_value, str):
+            casted_value = str(new_value)
+        else:
+            casted_value = new_value
+        setattr(args, key, casted_value)
+        print(f"Config updated: {key} = {casted_value}")
+    except ValueError as e:
+        print(f"Invalid value provided. Error: {e}")
+    except Exception as e:
+        print(f"An error occurred while updating the configuration. Error: {e}")
+    return messages

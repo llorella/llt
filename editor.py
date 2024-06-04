@@ -4,8 +4,8 @@ import time
 import base64
 from typing import List, Dict
 
-from message import Message, view_message
-from utils import path_input, content_input, language_extension_map, inverse_kv_map, encode_image, get_valid_index
+from message import Message
+from utils import path_input, content_input, language_extension_map, inverse_kv_map, get_valid_index, encode_image
 
 input_action_string = lambda actions: 'Choose an action: ' + ', '.join([("or " if i == len(actions)-1 else "") + f"{action} ({action[0]})" for i, action in enumerate(actions)]) + '?'
 
@@ -31,7 +31,7 @@ def save_or_edit_code_block(filename: str, code: str, editor: str = None, mode: 
         with open(filename, mode) as file:
             file.write(code.strip())
 
-def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
+def handle_code_block(code_block: Dict, dir_path: str, editor: str) -> str:
     action = input(f"File: {code_block['filename']}\nCode: \n{code_block['code']}\n{input_action_string(['write', 'edit', 'append', 'copy'])}\n").strip().lower()
     if action in ('w', 'e', 'a'):
         filename = os.path.join(dir_path, path_input(code_block['filename'], dir_path))  
@@ -47,7 +47,7 @@ def handle_code_block(code_block: dict, dir_path: str, editor: str) -> str:
         return "Copied."
     return "Skipped."
   
-def extract_code_blocks(markdown_text: str) -> list[dict]:
+def extract_code_blocks(markdown_text: str) -> List[Dict]:
     code_blocks = []
     inside_code_block = False
     current_code_block = {"filename": "", "code": "", "language": ""}
@@ -73,8 +73,8 @@ def extract_code_blocks(markdown_text: str) -> list[dict]:
 
     return [block for block in code_blocks if block["code"].strip()]
 
-def edit_content(messages: list[Message], args: dict, index: int = -1) -> List[Message]:
-    message_index = get_valid_index(messages, "edit content of", index) # prompt is any valid verb that precedes the preposition
+def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else -1 # prompt is any valid verb that precedes the preposition
     action = input(f"{input_action_string(['edit', 'append', 'copy'])}").strip().lower()
     if action in ('e', 'a'):
         with open("tmp.txt", 'w') as f:
@@ -90,7 +90,8 @@ def edit_content(messages: list[Message], args: dict, index: int = -1) -> List[M
     return messages
 
 def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll_file)[0])
+    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
+    # We create a directory for execution files that corresspond to an ll thread. The kernel of some 'agent' space for navigating a file system.
     os.makedirs(default_exec_dir, exist_ok=True)
     exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
     # use descriptive handlers for code blocks
@@ -101,28 +102,21 @@ def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[M
     ])))
     return messages
 
-def include_file(messages: list[Message], args: dict) -> list[Message]:
-    file_path = os.path.expanduser(path_input(args.file_include, os.getcwd())) if not args.non_interactive\
-        else args.file_include
+def include_file(messages: List[Message], args: Dict) -> List[Message]:
+    if args.non_interactive: file_path = args.file # don't ask user, just use the file path
+    else: file_path = path_input(args.file, os.getcwd()) # ask user for file path, in interactive mode
     (_, ext) = os.path.splitext(file_path)
-    if ext in ['.png', '.jpg', '.jpeg']:
-        print(f"Attaching image: {file_path}")
-        messages.append({"role": "user", "content": [{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]})
-        return messages
+    if ext in ['.png', '.jpg', '.jpeg']: 
+        messages.append(Message(role='user', content=[{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]))
     else:
         with open(file_path, 'r') as file:
             data = file.read()
-        language = inverse_kv_map(language_extension_map)[ext.lower()] if ext else None
-        messages.append(Message(role='user', content=f'```{language}\n{data}\n```' if language else f'{data}\n'))
-        return messages
-    
-def convert_text_base64(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
-    message_index = get_valid_index(messages, "convert text to base64", index)
-    messages[message_index]['content'] = base64.b64encode(messages[message_index]['content'].encode('utf-8')).decode('utf-8')
+        language = inverse_kv_map(language_extension_map)[ext.lower()] if ext in language_extension_map else None
+        messages.append(Message(role='user', content=f"{'```' + language if language else ''}\n{data}\n{'```' if language else ''}"))
     return messages
 
-def execute_command(messages: list[Message], args: dict, index: int = -1) -> list[Message]:
-    message_index = get_valid_index(messages, "execute command of", index)
+def execute_command(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
     code_blocks = extract_code_blocks(messages[message_index]['content'])
     for code_block in code_blocks:
         if code_block['language'] == 'bash' or code_block['language'] == 'shell' or not code_block['language']:
