@@ -34,11 +34,6 @@ def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     messages.append(message)
     return messages
 
-def prompt_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    completion_msg = get_completion(messages, args)
-    messages.append(Message(role=completion_msg['role'], content=completion_msg['content']))
-    return messages
-
 def remove_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "remove", index)
     messages.pop(message_index)

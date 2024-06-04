@@ -1,104 +1,74 @@
-from openai import OpenAI
-from mistralai.client import MistralClient
-import anthropic
-from groq import Groq
-
-import time
+import requests
 import os
 import subprocess
 import yaml
-
-from typing import List, Dict
-def get_start_time():
-    return time.time()
-
-def save_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
-    if config_path.lower() == 'exit' or not config_path: return messages
-    with open(config_path, 'w') as config_file:
-        yaml.dump(vars(args), config_file, default_flow_style=False)
-    print(f"Config saved to {config_path}")
-    return messages
-
-def update_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    for arg in vars(args):
-        print(f"{arg}: {getattr(args, arg)}")
-    try:
-        key = input("Enter the name of the config option to update: ")
-        if not hasattr(args, key):
-            print(f"Config {key} does not exist.")
-            return messages
-        current_value = getattr(args, key)
-        new_value = input(f"Current value for {key}: {current_value}\nEnter new value for {key} (or 'exit' to cancel): ")
-        if new_value.lower() == 'exit' or not new_value: return messages
-        if isinstance(current_value, int):
-            casted_value = int(new_value)
-        elif isinstance(current_value, float):
-            casted_value = float(new_value)
-        elif isinstance(current_value, str):
-            casted_value = str(new_value)
-        else:
-            casted_value = new_value
-        setattr(args, key, casted_value)
-        print(f"Config updated: {key} = {casted_value}")
-    except ValueError as e:
-        print(f"Invalid value provided. Error: {e}")
-    except Exception as e:
-        print(f"An error occurred while updating the configuration. Error: {e}")
-    return messages
+import json
+from typing import List, Dict, Any
     
 def load_config(path: str):
     with open(path, 'r') as config_file:
         return yaml.safe_load(config_file)
+    
+def list_model_names(providers):
+    return [f"{model}-{version}"
+            for _, details in providers.items()
+            for model, versions in details.get('models', {}).items()
+            for version in versions]
 
 api_config = load_config(os.path.join(os.getenv('LLT_PATH'), "config.yaml"))
-full_model_choices = [f"{model_family}-{model}" for provider in api_config['models'] 
-                      for model_family in api_config['models'][provider] 
-                      for model in api_config['models'][provider][model_family]]
+full_model_choices = list_model_names(api_config['providers'])
 
-def collect_messages(completion_stream: Dict):
-    role, collected_messages = "assistant",[]
-    for chunk in completion_stream:
-        chunk_message = chunk.choices[0].delta.content
-        print(chunk_message or "\n", end="")
-        if chunk_message is not None:
-            collected_messages.append(chunk_message)
-    full_reply_content = ''.join(collected_messages)
-    return {'role': role, 'content': full_reply_content}
+def get_provider_details(model_name: str):
+    for provider, details in api_config['providers'].items():
+        for model, versions in details.get('models', {}).items():
+            if model_name in [f"{model}-{version}" for version in versions]:
+                return provider, details["api_key"], details['completion_url']
+    raise ValueError(f"Model {model_name} not found in configuration.")
+
+def send_request(completion_url: str, api_key_string: str, messages: List[Dict[str, Any]], args: Dict[str, Any]) -> Dict[str, Any]:
+    headers = {
+        "Authorization": f"Bearer {os.getenv(api_key_string)}",
+        "Content-Type": "application/json"
+    }
+    data = {
+        "messages": messages,
+        "model": args.model,
+        "temperature": args.temperature,             
+        "max_tokens": args.max_tokens,
+        "stream": True
+    }
+    full_response_content = ""
+    try:
+        with requests.post(completion_url, headers=headers, json=data, stream=True) as response:
+            response.raise_for_status()
+            for chunk in response.iter_lines():
+                if chunk:
+                    decoded_chunk = chunk.decode('utf-8')
+                    if decoded_chunk.startswith("data: "):
+                        json_data = json.loads(decoded_chunk[6:])
+                        choice = json_data['choices'][0]
+                        delta = choice['delta']
+                        finish_reason = choice['finish_reason']
+                        if finish_reason is None:
+                            print(delta['content'] or "\n", end="", flush=True)
+                            full_response_content += delta['content']   
+                        if finish_reason == 'stop': 
+                            print("\r")
+                            break
+    except requests.RequestException as e:
+        print(f"Request failed: {e}")
+
+    return { 'role': 'assistant', 'content': full_response_content }
 
 def get_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
-    providers = api_config['models']
-    func_map = {func.__name__.split("_")[1]: func for func in [get_anthropic_completion, get_openai_completion, get_mistral_completion, get_groq_completion, get_local_completion]}
-    for provider, families in providers.items():
-        full_model_names = [f"{family}-{model}" for family in families for model in families[family]]
-        if args.model in full_model_names and provider in func_map:
-            return func_map[provider](messages, args) 
-    raise ValueError(f"Invalid model: {args.model}")
+    provider, api_key_string, completion_url = get_provider_details(args.model)
+    if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
+    else: completion = send_request(completion_url, api_key_string, messages, args)
+    messages.append(completion)
+    return messages
 
-def get_openai_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
-    openai_client = OpenAI()
-    start_time = get_start_time()
-    completion = openai_client.chat.completions.create(
-        messages=messages,
-        model=args.model,
-        temperature=args.temperature,
-        stream=True,
-        logprobs=True,
-        max_tokens=4096
-    )
-    return collect_messages(completion)
-
-def get_mistral_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
-    mistral_client = MistralClient()
-    start_time = get_start_time()
-    completion = mistral_client.chat_stream(
-        messages=messages,
-        model=args.model,
-        temperature=args.temperature,
-        max_tokens=4096
-    )
-    return collect_messages(completion)
-
+# anthropic's api is annoyingly different from other providers
+import anthropic
 def get_anthropic_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
     anthropic_client = anthropic.Client()
     if messages[0]['role'] == 'system':
@@ -107,33 +77,24 @@ def get_anthropic_completion(messages: List[Dict[str, any]], args: Dict) -> Dict
     else:
         system_prompt = "You are a helpful programming assistant."
     response_content = ""
-    start_time = get_start_time()
     with anthropic_client.messages.stream(
         model=args.model,
         system=system_prompt,
         messages=messages,
         temperature=args.temperature,
-        max_tokens=4096
+        max_tokens=args.max_tokens
     ) as stream:
         for text in stream.text_stream:
             print(text, end="", flush=True)
             response_content += text
-    return {'role': 'assistant', 'content': response_content+"\n\n"}
-
-def get_groq_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
-    groq_client = Groq()
-    start_time = get_start_time()
-    completion = groq_client.chat.completions.create(
-        model=args.model,
-        messages=messages,
-        temperature=args.temperature,
-        max_tokens=4096, 
-        stream=True
-    )
-    return collect_messages(completion)
+        print("\r")
+    return {'role': 'assistant', 'content': response_content}
 
 def get_local_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
-    llamacpp_root_dir, llamacpp_log_dir = os.getenv('LLAMACPP_DIR'), os.getenv('LLAMACPP_LOG_DIR')
+    llamacpp_root_dir = os.getenv('LLAMACPP_DIR')
+    llamacpp_log_dir = os.getenv('LLAMACPP_LOG_DIR')
+    if not llamacpp_root_dir or not llamacpp_log_dir:
+        raise EnvironmentError("LLAMACPP environment variables not set.")
     model_options = api_config['llamacpp'][args.model.split('-')[0].lower()]
     model_path = api_config['local_llms_dir'] + args.model + '.gguf'
     def format_message(messages: List[Dict[str, any]]) -> str:
@@ -154,7 +115,7 @@ def get_local_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str
                                     universal_newlines=True, 
                                     cwd=os.getenv('HOME'))
             print("\n")
-            log_files = [os.path.join(llamacpp_log_dir, f) for f in os.Listdir(llamacpp_log_dir) if os.path.isfile(os.path.join(llamacpp_log_dir, f))]
+            log_files = [os.path.join(llamacpp_log_dir, f) for f in os.listdir(llamacpp_log_dir) if os.path.isfile(os.path.join(llamacpp_log_dir, f))]
             return {'role': 'assistant', 'content': str(load_config(max(log_files, key=os.path.getmtime))['output'])}
         except KeyboardInterrupt:
             print("KeyboardInterrupt")

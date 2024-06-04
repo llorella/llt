@@ -152,6 +152,10 @@ language_extension_map = {
     'cpp': '.cpp',
     'rust': '.rs',
     'go': '.go',
+    'csv': '.csv',
+    'log': '.log',
+    'json': '.ll',
+    'json': '.json',
 }
 
 inverse_kv_map = lambda d: {v: k for k, v in d.items()}
@@ -185,3 +189,38 @@ def export_messages(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str
                 print("Invalid export format. Please choose from json, txt, or md.")
             
     print(f"Messages exported to text file at {output_path}")
+
+def save_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
+    if config_path.lower() == 'exit' or not config_path: return messages
+    with open(config_path, 'w') as config_file:
+        yaml.dump(vars(args), config_file, default_flow_style=False)
+    print(f"Config saved to {config_path}")
+    return messages
+
+def update_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    for arg in vars(args):
+        print(f"{arg}: {getattr(args, arg)}")
+    try:
+        key = input("Enter the name of the config option to update: ")
+        if not hasattr(args, key):
+            print(f"Config {key} does not exist.")
+            return messages
+        current_value = getattr(args, key)
+        new_value = input(f"Current value for {key}: {current_value}\nEnter new value for {key} (or 'exit' to cancel): ")
+        if new_value.lower() == 'exit' or not new_value: return messages
+        if isinstance(current_value, int):
+            casted_value = int(new_value)
+        elif isinstance(current_value, float):
+            casted_value = float(new_value)
+        elif isinstance(current_value, str):
+            casted_value = str(new_value)
+        else:
+            casted_value = new_value
+        setattr(args, key, casted_value)
+        print(f"Config updated: {key} = {casted_value}")
+    except ValueError as e:
+        print(f"Invalid value provided. Error: {e}")
+    except Exception as e:
+        print(f"An error occurred while updating the configuration. Error: {e}")
+    return messages
