@@ -121,7 +121,7 @@ def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
                 msg_type = msg_content[i]['type']
                 msg_value = msg_content[i][msg_type]
                 if msg_type == 'text': content+=msg_value
-                elif msg_type== 'image_url': num_tokens += count_image_tokens(msg_value['url'])
+                #elif msg_type== 'image_url': num_tokens += count_image_tokens(msg_value['url'])
         else: 
             content+=msg_content
     encoding = tiktoken.encoding_for_model("gpt-4")
@@ -140,35 +140,34 @@ def convert_text_base64(messages: List[Dict[str, any]], args: Dict, index: int =
     return messages
 
 language_extension_map = {
-    'python': '.py',
-    'shell': '.sh',
-    'markdown': '.md',
-    'html': '.html',
-    'css': '.css',
-    'javascript': '.js',
-    'json': '.json',
-    'yaml': '.yaml',
-    'c': '.c',
-    'cpp': '.cpp',
-    'rust': '.rs',
-    'go': '.go',
-    'csv': '.csv',
-    'log': '.log',
-    'json': '.ll',
-    'json': '.json',
+    '.py': 'python',
+    '.sh': 'shell',
+    '.md': 'markdown',
+    '.html': 'html',
+    '.css': 'css',
+    '.js': 'javascript',
+    '.ts': 'typescript',
+    '.json': 'json',
+    '.yaml': 'yaml',
+    '.c': 'c',
+    '.cpp': 'cpp',
+    '.rs': 'rust',
+    '.go': 'go',
+    '.csv': 'csv',
+    '.cu': 'cuda',
 }
 
 inverse_kv_map = lambda d: {v: k for k, v in d.items()}
  
-def get_valid_index(messages, prompt, default=-1):
+def get_valid_index(msg_len: int, prompt: str, default=-1):
     try:
         idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
         if not idx: return default
-        idx = int(idx) % len(messages)  # support negative indexing
+        idx = int(idx) % msg_len  # support negative indexing
     except ValueError:
         print("Invalid input. Using default.")
         idx = default
-    if not -len(messages) <= idx < len(messages):
+    if not -msg_len <= idx < msg_len:
         raise IndexError("Index out of range. No operation will be performed.")
     return idx  
 
@@ -189,14 +188,6 @@ def export_messages(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str
                 print("Invalid export format. Please choose from json, txt, or md.")
             
     print(f"Messages exported to text file at {output_path}")
-
-def save_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    config_path = input(f"Enter config file path (default is {os.path.join(os.getenv('LLT_PATH'), 'config.yaml')}, 'exit' to cancel): ")
-    if config_path.lower() == 'exit' or not config_path: return messages
-    with open(config_path, 'w') as config_file:
-        yaml.dump(vars(args), config_file, default_flow_style=False)
-    print(f"Config saved to {config_path}")
-    return messages
 
 def update_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     for arg in vars(args):

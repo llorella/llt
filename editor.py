@@ -3,11 +3,30 @@ import subprocess
 import time
 import base64
 from typing import List, Dict
+import pyperclip
 
 from message import Message
 from utils import path_input, content_input, language_extension_map, inverse_kv_map, get_valid_index, encode_image
 
 input_action_string = lambda actions: 'Choose an action: ' + ', '.join([("or " if i == len(actions)-1 else "") + f"{action} ({action[0]})" for i, action in enumerate(actions)]) + '?'
+default_editor = 'vim'
+temp_file = 'tmp.txt'
+image_exts = ['.png', '.jpg', '.jpeg']
+
+def copy_to_clipboard(text: str) -> None:
+    try:
+        pyperclip.copy(text)
+    except ImportError:
+        print("pyperclip module not found. Skipping clipboard functionality.")
+
+def paste_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    paste = pyperclip.paste()
+    messages.append(Message(role='user', content=paste))
+    return messages
+
+def copy_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    copy_to_clipboard(messages[-1]['content'])
+    return messages
 
 def list_files(dir_path):
     return [    
@@ -16,75 +35,47 @@ def list_files(dir_path):
                 dir_path,
                 f))]
 
-def copy_to_clipboard(text: str) -> None:
-    try:
-        import pyperclip
-        pyperclip.copy(text)
-    except ImportError:
-        print("pyperclip module not found. Skipping clipboard functionality.")
-
-def save_or_edit_code_block(filename: str, code: str, editor: str = None, mode: str = 'w') -> None:
-    if editor:
-        copy_to_clipboard(code)
-        subprocess.run([editor, filename], check=True)
-    else:
+def save_code_block(filename: str, code: str, mode: str = 'w') -> str:
+    if mode == 'e':
+        if code: copy_to_clipboard(code)
+        subprocess.run([default_editor, filename], check=True)
+        # todo: some kind of diff tool to show changes and return to code block handler for logging
+        return f'{filename} edited.'
+    elif mode in ['a', 'w']:
         with open(filename, mode) as file:
             file.write(code.strip())
+        return f'Code block written to {filename}'
+    else: return 'No changes made.'
 
-def handle_code_block(code_block: Dict, dir_path: str, editor: str) -> str:
-    action = input(f"File: {code_block['filename']}\nCode: \n{code_block['code']}\n{input_action_string(['write', 'edit', 'append', 'copy'])}\n").strip().lower()
+def handle_code_block(code_block: Dict, dir_path: str) -> str:
+    action = input(f"Language: {code_block['language']}\nCode: \n{code_block['code']}\n{input_action_string(['write', 'edit', 'append', 'copy'])}\n").strip().lower()
     if action in ('w', 'e', 'a'):
-        filename = os.path.join(dir_path, path_input(code_block['filename'], dir_path))  
+        filename = os.path.join(dir_path, path_input("", dir_path))  
         os.makedirs(os.path.dirname(filename), exist_ok=True)
-        save_or_edit_code_block(
-            filename,
-            code_block['code'],
-            editor if (action == 'e') else '',
-            action)
-        return f"{filename} changed."
+        return save_code_block(filename, code_block['code'], action)
     elif action == 'c':
         copy_to_clipboard(code_block['code'])
-        return "Copied."
+        return 'Copied code block to clipboard.'
     return "Skipped."
-  
-def extract_code_blocks(markdown_text: str) -> List[Dict]:
-    code_blocks = []
-    inside_code_block = False
-    current_code_block = {"filename": "", "code": "", "language": ""}
-    code_block_marker = '```'
-    filename_marker = '##'
-    lines = markdown_text.split('\n')
-    for i, line in enumerate(lines):
-        if line.startswith(code_block_marker):
-            if not inside_code_block:
-                if i > 0 and lines[i - 1].startswith(filename_marker):
-                    current_code_block["filename"] = lines[i - 
-                                                           1].lstrip(filename_marker).strip()
-                _, _, language = line.partition(code_block_marker)
-                current_code_block["language"] = language.strip()
-                inside_code_block = True
-            else:
-                inside_code_block = False
-                code_blocks.append(current_code_block)
-                current_code_block = {
-                    "filename": "", "code": "", "language": ""}
-        elif inside_code_block:
-            current_code_block["code"] += line + '\n'
 
-    return [block for block in code_blocks if block["code"].strip()]
+import re
+code_block_pattern = re.compile(r'```(\w+)\n(.*?)\n```', re.DOTALL)  
+
+def extract_code_blocks(content: str) -> List[Dict]:
+    matches = code_block_pattern.findall(content)
+    code_blocks = []
+    for language, code in matches: code_blocks.append({'language': language, 'code': code})
+    return code_blocks
 
 def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else -1 # prompt is any valid verb that precedes the preposition
+    message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else index # prompt is any valid verb that precedes the preposition
     action = input(f"{input_action_string(['edit', 'append', 'copy'])}").strip().lower()
     if action in ('e', 'a'):
-        with open("tmp.txt", 'w') as f:
+        with open(temp_file, 'w') as f:
             f.write(messages[message_index]['content'])
-        save_or_edit_code_block("tmp.txt", 
-                                messages[message_index]['content'], 
-                                "vim" if action == 'e' else None,
-                                'a')
-        messages[message_index]['content'] = open("tmp.txt").read()
-        os.remove("tmp.txt")
+        save_code_block(temp_file, None, 'e')
+        messages[message_index]['content'] = open(temp_file).read()
+        os.remove(temp_file)
     elif action == 'c':
         copy_to_clipboard(messages[message_index]['content'])
     return messages
@@ -96,9 +87,10 @@ def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[M
     exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
     # use descriptive handlers for code blocks
     message_index = get_valid_index(messages, "edit code block of", index)
+    code_blocks = extract_code_blocks(messages[message_index]['content'])
     messages.append(Message(role='user', content='\n'.join([
-        handle_code_block(code_block, exec_dir, "vim")
-        for code_block in extract_code_blocks(messages[message_index]['content'])
+        handle_code_block(code_block, exec_dir)
+        for code_block in code_blocks
     ])))
     return messages
 
@@ -106,13 +98,12 @@ def include_file(messages: List[Message], args: Dict) -> List[Message]:
     if args.non_interactive: file_path = args.file # don't ask user, just use the file path
     else: file_path = path_input(args.file, os.getcwd()) # ask user for file path, in interactive mode
     (_, ext) = os.path.splitext(file_path)
-    if ext in ['.png', '.jpg', '.jpeg']: 
+    if ext in image_exts:
         messages.append(Message(role='user', content=[{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]))
     else:
         with open(file_path, 'r') as file:
             data = file.read()
-        language = inverse_kv_map(language_extension_map)[ext.lower()] if ext in language_extension_map else None
-        messages.append(Message(role='user', content=f"{'```' + language if language else ''}\n{data}\n{'```' if language else ''}"))
+        messages.append(Message(role='user', content=data))
     return messages
 
 def execute_command(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:

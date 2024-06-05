@@ -9,14 +9,11 @@ from enum import Enum, auto
 import traceback
 
 from message import load_message, write_message, view_message, new_message, remove_message, detach_message, append_message, cut_message, change_role, insert_message
-from editor import code_message, include_file, execute_command, edit_content, copy_to_clipboard
-from utils import Colors, quit_program, tokenize, export_messages, convert_text_base64, get_valid_index, save_config, update_config
+from editor import code_message, include_file, execute_command, edit_content, copy_content, paste_content
+from utils import Colors, quit_program, tokenize, export_messages, convert_text_base64, update_config
 from api import api_config, full_model_choices, get_completion
 from gmail import send_email
 from web import process_web_request
-
-#from logcmd_llt_branch_1 import search_messages, export_messages_to_markdown
-
 from exa import llt_plugin
 
 class ArgKey(Enum):
@@ -128,7 +125,6 @@ def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
     return messages
 
 test_commands = {
-    'sc': save_config,
     'uc': update_config,
     'cr': change_role,
     'ec': edit_content,
@@ -136,7 +132,9 @@ test_commands = {
     'base64': convert_text_base64,
     'execute': execute_command,
     'email': send_email,
-    'web': process_web_request}
+    'web': process_web_request,
+    'copy': copy_content,
+    'paste': paste_content}
 
 def get_combined_commands():
     combined = {}
@@ -146,15 +144,17 @@ def get_combined_commands():
         elif len(command) > 2 and command[1] not in combined: combined[command[1]] = function
     return combined    
 
+def llt_shell_log(cmd: str):
+    file_path = os.path.join(os.getenv('LLT_PATH'), 'llt_shell.log')
+    with open(file_path, 'a') as logfile:
+        logfile.write(f"llt> {cmd}\n")
+
 def run_non_interactive(messages: List[Dict], args: argparse.Namespace) -> None:
     if args.ll and args.write: write_message(messages, args)
     quit_program(messages, args)
 
 user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
-#  add buffer for any input that is not a command nor a message
-#  only available for interactive mode user input spec: function type that invokes some input fn with format string specific to plugin command invocation
-#  i.e., load and write calls input fn with format string "Enter file path (default is {default_file}): "
-#  n cmd and/or freeforn at the cmd line, "the meta-command" is the else clause in main cmd loop
+
 def main() -> None:
     args = parse_arguments()
     init_directories(args)
@@ -191,6 +191,7 @@ def main() -> None:
                 messages = command_map[cmd](messages, args)
                 log_command(cmd, messages, args)
             elif cmd: messages.append({'role': args.role, 'content': f"{cmd}"})
+            llt_shell_log(cmd)
         except KeyboardInterrupt:
             print("\nExiting...")
             break
