@@ -14,7 +14,7 @@ from utils import Colors, quit_program, tokenize, export_messages, convert_text_
 from api import api_config, full_model_choices, get_completion
 from gmail import send_email
 from web import process_web_request
-from exa import llt_plugin
+from search import search_plugin
 
 class ArgKey(Enum):
     LL = auto()
@@ -47,7 +47,7 @@ plugins = {
     'detach': detach_message,
     'append': append_message,
     'cut': cut_message,
-    'exa': llt_plugin
+    'exa': search_plugin
 }
 
 def parse_arguments() -> argparse.Namespace:
@@ -166,7 +166,7 @@ def main() -> None:
         ArgKey.PROMPT: new_message,
         ArgKey.DETACH: detach_message,
         ArgKey.EXPORT: export_messages,
-        ArgKey.SEARCH: llt_plugin,
+        ArgKey.SEARCH: search_plugin,
         ArgKey.EXEC: execute_command,
         ArgKey.URL: process_web_request,
         ArgKey.EMAIL: send_email,
