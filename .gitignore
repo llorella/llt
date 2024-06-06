@@ -4,6 +4,7 @@
 # explicitly include the files you want to track
 !api.py
 !main.py
+!plugins.py
 !editor.py
 !message.py
 !utils.py

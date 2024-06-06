@@ -8,13 +8,7 @@ from typing import List, Dict
 from enum import Enum, auto
 import traceback
 
-from message import load_message, write_message, view_message, new_message, remove_message, detach_message, append_message, cut_message, change_role, insert_message
-from editor import code_message, include_file, execute_command, edit_content, copy_content, paste_content
-from utils import Colors, quit_program, tokenize, export_messages, convert_text_base64, update_config
-from api import api_config, full_model_choices, get_completion
-from gmail import send_email
-from web import process_web_request
-from search import search_plugin
+from plugins import plugins
 
 class ArgKey(Enum):
     LL = auto()
@@ -33,22 +27,24 @@ class ArgKey(Enum):
     NON_INTERACTIVE = auto()
     WRITE = auto()
 
-plugins = {
-    'load': load_message,
-    'write': write_message,
-    'view': view_message,
-    'prompt': new_message,
-    'complete': get_completion,
-    'edit': code_message,
-    'file': include_file,
-    'quit': quit_program,
-    'insert': insert_message,
-    'remove': remove_message,
-    'detach': detach_message,
-    'append': append_message,
-    'cut': cut_message,
-    'exa': search_plugin
-}
+""" startup_functions =  {
+        ArgKey.LL: load_message,
+        ArgKey.FILE: include_file,
+        ArgKey.PROMPT: new_message,
+        ArgKey.DETACH: detach_message,
+        ArgKey.EXPORT: export_messages,
+        ArgKey.SEARCH: search_plugin,
+        ArgKey.EXEC: execute_command,
+        ArgKey.URL: process_web_request,
+        ArgKey.EMAIL: send_email,
+        ArgKey.BASE64: convert_text_base64,
+        ArgKey.COMPLETE: get_completion,
+        ArgKey.VIEW: view_message,
+        ArgKey.NON_INTERACTIVE: run_non_interactive,
+        ArgKey.WRITE: write_message
+    } """
+startup_cmds=  ['load', 'file', 'prompt']
+#llt> find a better way to do this: (13,45)
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
@@ -59,7 +55,10 @@ def parse_arguments() -> argparse.Namespace:
 
     parser.add_argument('--ll', '-l', type=str, help="Language log file. JSON formatted list of natural language messages.", default="").completer = get_ll_files
     parser.add_argument('--file', '-f', type=str, help="Read content from a file and include it in the ll.", default="")
-    parser.add_argument('--image_path', type=str, default="")
+    parser.add_argument('--update_files', nargs='+', type=str, help="Update files in the ll fs.", default=[])
+    parser.add_argument('--prompt_line', '--llt_hook', nargs='+', type=int, help="Update files in the ll fs.", default=[])
+
+    parser.add_argument('--screen', action='store_true')
 
     parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
     parser.add_argument('--role', '-r', type=str, help="Specify role.", default="user")
@@ -71,9 +70,9 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--logprobs', type=int, help="Include log probabilities in the output, up to the specified number of tokens.", default=0)
     parser.add_argument('--top_p', type=float, help="Sample from top P tokens.", default=1.0)
 
-    parser.add_argument('--cmd_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['cmd_dir']))
-    parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['exec_dir']))
-    parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), api_config['ll_dir']))
+    parser.add_argument('--cmd_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), 'cmd'))
+    parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), 'exec'))
+    parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH'), 'll'))
 
     parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
 
@@ -96,62 +95,16 @@ def init_directories(args: argparse.Namespace) -> None:
     for directory in [args.ll_dir, args.exec_dir, args.cmd_dir]:
         os.makedirs(directory, exist_ok=True)
 
-def log_command(command: str, messages: List[Dict], args: dict) -> None:
-    if command.startswith('v') or command.startswith('h') or not messages: return
-    tokens = tokenize(messages, args) if messages else 0
-    log_path = os.path.join(args.cmd_dir, os.path.splitext(os.path.basename(args.ll))[0] + ".log")
-    if not os.path.exists(log_path): os.makedirs(os.path.dirname(log_path), exist_ok=True)
+def log_command(command: str, message: dict, args) -> None:
+    #if command.startswith('v') or command.startswith('h') or not messages: return
+    log_path = f'{args.cmd_dir}/{os.path.splitext(os.path.basename(args.ll))[0]}.jsonl'
     with open(log_path, 'a') as logfile:
-        logfile.write(f"COMMAND_START\n")
-        logfile.write(f"timestamp: {datetime.datetime.now().isoformat()}\n")
-        logfile.write(f"before_command: {json.dumps(messages, indent=2)}\n")  
-        logfile.write(f"args: {json.dumps(vars(args), indent=2)}\n")
-        logfile.write(f"command: {command}\n")
-        logfile.write(f"input: TO IMPLEMENT\n")
-        logfile.write(f"after_command: {json.dumps(messages[-1], indent=2)}\n")
-        logfile.write(f"tokens: {tokens}\n")
-        logfile.write(f"COMMAND_END\n\n")
-
-def help_message(messages: List[Dict], args: argparse.Namespace) -> List[Dict]:
-    function_to_commands = {}
-    for command, function in get_combined_commands().items():
-        if function not in function_to_commands:
-            function_to_commands[function] = []
-        function_to_commands[function].append(command)
-
-    for function, cmds in function_to_commands.items():
-        cmds.sort(key=lambda x: len(x), reverse=True)
-        print(f"({', '.join(cmds)}): {function}")
-    return messages
-
-test_commands = {
-    'uc': update_config,
-    'cr': change_role,
-    'ec': edit_content,
-    'help': help_message, 
-    'base64': convert_text_base64,
-    'execute': execute_command,
-    'email': send_email,
-    'web': process_web_request,
-    'copy': copy_content,
-    'paste': paste_content}
-
-def get_combined_commands():
-    combined = {}
-    for command, function in {**plugins, **test_commands}.items():
-        combined[command] = function
-        if command[0] not in combined: combined[command[0]] = function
-        elif len(command) > 2 and command[1] not in combined: combined[command[1]] = function
-    return combined    
+        logfile.write(json.dumps({'command': command, 'message': message}))
 
 def llt_shell_log(cmd: str):
     file_path = os.path.join(os.getenv('LLT_PATH'), 'llt_shell.log')
     with open(file_path, 'a') as logfile:
         logfile.write(f"llt> {cmd}\n")
-
-def run_non_interactive(messages: List[Dict], args: argparse.Namespace) -> None:
-    if args.ll and args.write: write_message(messages, args)
-    quit_program(messages, args)
 
 user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
 
@@ -159,27 +112,8 @@ def main() -> None:
     args = parse_arguments()
     init_directories(args)
     messages = list()
-
-    startup_functions =  {
-        ArgKey.LL: load_message,
-        ArgKey.FILE: include_file,
-        ArgKey.PROMPT: new_message,
-        ArgKey.DETACH: detach_message,
-        ArgKey.EXPORT: export_messages,
-        ArgKey.SEARCH: search_plugin,
-        ArgKey.EXEC: execute_command,
-        ArgKey.URL: process_web_request,
-        ArgKey.EMAIL: send_email,
-        ArgKey.BASE64: convert_text_base64,
-        ArgKey.COMPLETE: get_completion,
-        ArgKey.VIEW: view_message,
-        ArgKey.NON_INTERACTIVE: run_non_interactive,
-        ArgKey.WRITE: write_message
-    }
     
-    for arg_key, func in startup_functions.items():
-        if getattr(args, arg_key.name.lower(), None):
-            messages = func(messages, args)
+    for cmd in startup_cmds: plugins[cmd](messages, args)
 
     Colors.print_header()
     print(user_greeting(os.getenv('USER'), args))
