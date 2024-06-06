@@ -1,14 +1,13 @@
 import os
 import json
 from typing import Optional, Dict, List
-from api import get_completion
-from utils import content_input, path_input, colors, get_valid_index, role_input
+from utils import content_input, path_input, colors, get_valid_index
 
 class Message(Dict):
     role: str
     content: any
 
-def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     ll_path = path_input(args.ll, args.ll_dir) if not args.non_interactive\
         else os.path.join(args.ll_dir, args.ll)
     if not os.path.exists(ll_path):
@@ -18,13 +17,13 @@ def load_message(messages: List[Message], args: Optional[Dict]) -> List[Message]
         messages.extend(json.load(file))
     return messages
 
-def write_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     ll_path = path_input(args.ll, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.ll)
     with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
     return messages
 
-def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+def new(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     if args.__contains__('prompt') and args.prompt:
         content = args.prompt
         args.__delattr__('prompt')
@@ -34,26 +33,26 @@ def new_message(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     messages.append(message)
     return messages
 
-def remove_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def remove(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "remove", index)
     messages.pop(message_index)
     return messages
 
-def detach_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def detach(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "detach", index)  
     return [messages.pop(message_index)]
 
-def append_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
+def append(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     messages[-2]['content'] += messages[-1]['content']
     messages.pop()
     return messages
 
-def insert_message(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "insert", index)
     messages.insert(message_index, Message(role=args.role, content=args.prompt))
     return messages
 
-def view_message(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:
+def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:
     def view_helper(message: Message) -> str:
         role, content = message['role'], message['content']
         if type(content) == list: content = "Image data."
@@ -70,14 +69,9 @@ def view_message(messages: List[Message], args: Optional[Dict] = None, index: in
     print(f"\nTotal messages shown: {end - start}")
     return messages
 
-def cut_message(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
+def cut(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     values = input("Enter values to cut: ").split(',')
     start = int(values[0]) - 1
     end = int(values[1]) if len(values) > 1 else start + 1
     user_input = input(f"Cutting messages {start} to {end}. Proceed? (Enter any key for yes, empty to cancel): ")
     return messages[start:end] if user_input else messages
-    
-def change_role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
-    message_index = get_valid_index(messages, "change role of", index)
-    messages[message_index]['role'] = role_input(messages[message_index]['role'])   
-    return messages

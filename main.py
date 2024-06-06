@@ -7,9 +7,22 @@ import argparse
 from typing import List, Dict
 from enum import Enum, auto
 import traceback
+from utils import Colors
 
 from plugins import plugins
 
+import importlib.util
+def load_plugins(plugin_dir):
+    """Dynamically load llt plugins from scripts in the specified directory."""
+    for filename in os.listdir(plugin_dir):
+        if filename.endswith('.py') and not filename.startswith('__'):
+            file_path = os.path.join(plugin_dir, filename)
+            module_name = filename[:-3]
+            spec = importlib.util.spec_from_file_location(module_name, file_path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+"""
 class ArgKey(Enum):
     LL = auto()
     DETACH = auto()
@@ -18,7 +31,7 @@ class ArgKey(Enum):
     COMPLETE = auto()
     EXPORT = auto()
     ROLE = auto()
-    EXEC = auto()
+    EXEC = austo()
     SEARCH = auto()
     URL = auto()
     EMAIL = auto()
@@ -27,7 +40,7 @@ class ArgKey(Enum):
     NON_INTERACTIVE = auto()
     WRITE = auto()
 
-""" startup_functions =  {
+startup_functions =  {
         ArgKey.LL: load_message,
         ArgKey.FILE: include_file,
         ArgKey.PROMPT: new_message,
@@ -44,13 +57,13 @@ class ArgKey(Enum):
         ArgKey.WRITE: write_message
     } """
 startup_cmds=  ['load', 'file', 'prompt']
-#llt> find a better way to do this: (13,45)
+#llt> find a better way to do this: (25,59)
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
     def get_ll_files(prefix: str, parsed_args: argparse.Namespace, **kwargs) -> List[str]:
-        ll_dir = parsed_args.ll_dir if parsed_args.ll_dir else os.path.join(os.getenv('LLT_PATH'), api_config['ll_dir'])
+        ll_dir = parsed_args.ll_dir if parsed_args.ll_dir else os.path.join(os.getenv('LLT_PATH'), 'll')
         return [f for f in os.listdir(ll_dir) if f.startswith(prefix)]
 
     parser.add_argument('--ll', '-l', type=str, help="Language log file. JSON formatted list of natural language messages.", default="").completer = get_ll_files
@@ -63,7 +76,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
     parser.add_argument('--role', '-r', type=str, help="Specify role.", default="user")
 
-    parser.add_argument('--model', '-m', type=str, help="Specify model.", default="gpt-4-turbo", choices=full_model_choices)
+    parser.add_argument('--model', '-m', type=str, help="Specify model.", default="gpt-4-turbo")
     parser.add_argument('--temperature', '-t', type=float, help="Specify temperature.", default=0.9)
     
     parser.add_argument('--max_tokens', type=int, help="Maximum number of tokens to generate.", default=4096)
@@ -96,7 +109,6 @@ def init_directories(args: argparse.Namespace) -> None:
         os.makedirs(directory, exist_ok=True)
 
 def log_command(command: str, message: dict, args) -> None:
-    #if command.startswith('v') or command.startswith('h') or not messages: return
     log_path = f'{args.cmd_dir}/{os.path.splitext(os.path.basename(args.ll))[0]}.jsonl'
     with open(log_path, 'a') as logfile:
         logfile.write(json.dumps({'command': command, 'message': message}))
@@ -108,23 +120,27 @@ def llt_shell_log(cmd: str):
 
 user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
 
-def main() -> None:
+def llt() -> None:
     args = parse_arguments()
     init_directories(args)
-    messages = list()
-    
-    for cmd in startup_cmds: plugins[cmd](messages, args)
+    messages = []
+    #for cmd in startup_cmds: messages = plugins[cmd](messages, args)
 
     Colors.print_header()
     print(user_greeting(os.getenv('USER'), args))
-    command_map = get_combined_commands()
+    command_map = {}
+    for command, function in plugins.items():
+        command_map[command] = function
+        if command[0] not in command_map: command_map[command[0]] = function
+        elif len(command) > 2 and command[1] not in command_map: command_map[command[1]] = function
+
     while True:
         try:
             cmd = input('llt> ')
             if cmd in command_map:
                 messages = command_map[cmd](messages, args)
                 log_command(cmd, messages, args)
-            elif cmd: messages.append({'role': args.role, 'content': f"{cmd}"})
+            else: messages.append({ 'role': args.role, 'content': cmd })
             llt_shell_log(cmd)
         except KeyboardInterrupt:
             print("\nExiting...")
@@ -134,4 +150,6 @@ def main() -> None:
             print(traceback.format_exc())
 
 if __name__ == "__main__":
-    main()
+    plugin_dir = os.getenv('LLT_DIR') + '/plugins' if os.getenv('LLT_DIR') else './plugins'
+    load_plugins(plugin_dir)
+    llt()

@@ -1,10 +1,10 @@
 import message
-plugins = {
+message_plugins = {
     'load': message.load,
     'write': message.write,
     'view': message.view,
     'detach': message.detach,
-    'fold': message.fold,
+    'fold': message.append,
     'cut': message.cut,
     'insert': message.insert,
     'remove': message.remove,
@@ -12,8 +12,8 @@ plugins = {
 }
 
 util_plugins = {
-    'help': lambda messages, args: print(f"({'\n'.join(plugins.keys())}): available plugins."),
-    'quit': lambda messages, args: exit(0),
+    'help': lambda messages, args: print(f"({', '.join(plugins.keys())}): available plugins."),
+    'quit': lambda messages, args: exit(0)
 }
 
 import pyperclip
@@ -21,6 +21,8 @@ clipboard_plugins = {
     'copy': lambda messages, args: pyperclip.copy(messages[-1]['content']),
     'paste': lambda messages, args: messages.append({'role': args.role, 'content': pyperclip.paste()})
 }
+
+plugins = { **message_plugins, **util_plugins, **clipboard_plugins }
 
 def plugin(func):
     plugins[func.__name__] = func

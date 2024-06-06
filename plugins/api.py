@@ -60,13 +60,6 @@ def send_request(completion_url: str, api_key_string: str, messages: List[Dict[s
 
     return { 'role': 'assistant', 'content': full_response_content }
 
-def get_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
-    provider, api_key_string, completion_url = get_provider_details(args.model)
-    if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
-    else: completion = send_request(completion_url, api_key_string, messages, args)
-    messages.append(completion)
-    return messages
-
 # anthropic's api is annoyingly different from other providers
 import anthropic
 def get_anthropic_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
@@ -122,3 +115,12 @@ def get_local_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Error running local model {args.model}: {e.stderr}")
     
+from plugins import plugin
+
+@plugin
+def get_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
+    provider, api_key_string, completion_url = get_provider_details(args.model)
+    if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
+    else: completion = send_request(completion_url, api_key_string, messages, args)
+    messages.append(completion)
+    return messages

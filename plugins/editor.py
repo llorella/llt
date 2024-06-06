@@ -19,15 +19,6 @@ def copy_to_clipboard(text: str) -> None:
     except ImportError:
         print("pyperclip module not found. Skipping clipboard functionality.")
 
-def paste_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    paste = pyperclip.paste()
-    messages.append(Message(role='user', content=paste))
-    return messages
-
-def copy_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    copy_to_clipboard(messages[-1]['content'])
-    return messages
-
 def list_files(dir_path):
     return [    
         f for f in os.listdir(dir_path) if os.path.isfile(
@@ -67,6 +58,20 @@ def extract_code_blocks(content: str) -> List[Dict]:
     for language, code in matches: code_blocks.append({'language': language, 'code': code})
     return code_blocks
 
+from plugins import plugin
+
+@plugin
+def paste_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    paste = pyperclip.paste()
+    messages.append(Message(role='user', content=paste))
+    return messages
+
+@plugin
+def copy_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    copy_to_clipboard(messages[-1]['content'])
+    return messages
+
+@plugin
 def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else index # prompt is any valid verb that precedes the preposition
     action = input(f"{input_action_string(['edit', 'append', 'copy'])}").strip().lower()
@@ -80,6 +85,7 @@ def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[M
         copy_to_clipboard(messages[message_index]['content'])
     return messages
 
+@plugin
 def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
     # We create a directory for execution files that corresspond to an ll thread. The kernel of some 'agent' space for navigating a file system.
@@ -94,6 +100,8 @@ def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[M
     ])))
     return messages
 
+
+@plugin
 def include_file(messages: List[Message], args: Dict) -> List[Message]:
     if args.non_interactive: file_path = args.file # don't ask user, just use the file path
     else: file_path = path_input(args.file, os.getcwd()) # ask user for file path, in interactive mode
@@ -106,6 +114,7 @@ def include_file(messages: List[Message], args: Dict) -> List[Message]:
         messages.append(Message(role='user', content=data))
     return messages
 
+@plugin
 def execute_command(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
     code_blocks = extract_code_blocks(messages[message_index]['content'])
