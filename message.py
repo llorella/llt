@@ -53,25 +53,32 @@ def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     return messages
 
 def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:
-    def view_helper(message: Message) -> str:
+    if not messages: return messages
+    def view_helper(message: Message, idx: int) -> str:
         role, content = message['role'], message['content']
-        if type(content) == list: content = "Image data."
+        if type(content) == list: content = "Image handling being implemented."
         color = colors.get(role, colors['reset'])
         print(f"{color}[{role.capitalize()}]{colors['reset']}")
         for line in content.split('\\n'): print(line)
         print(f"{color}[/{role.capitalize()}]{colors['reset']}")
-    if not messages: return messages
-    message_index = 0 # can also set message_index = get_valid_index(messages, "view", index), based on preference
-    start, end = 0, len(messages)
-    if message_index < 0: start, end = len(messages) + index, len(messages)
-    elif message_index > 0: start, end = index, index + 1
-    for i in range(start, end): view_helper(messages[i])
-    print(f"\nTotal messages shown: {end - start}")
+        print(f"\nMessage {idx} of {len(messages)}")
+        
+    for i in range(0, len(messages)): view_helper(messages[i], i+1)
+    print(f"\nTotal messages shown: {len(messages)}")
     return messages
 
-def cut(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    values = input("Enter values to cut: ").split(',')
-    start = int(values[0]) - 1
-    end = int(values[1]) if len(values) > 1 else start + 1
-    user_input = input(f"Cutting messages {start} to {end}. Proceed? (Enter any key for yes, empty to cancel): ")
-    return messages[start:end] if user_input else messages
+def cut(messages: List[str], args: Optional[Dict] = None) -> List[str]:
+    if not messages: return messages
+    try:
+        values = input("Enter start and optional end index separated by comma (e.g., 2,5): ").split(',')
+        start = max(0, int(values[0]) - 1)
+        end = int(values[1]) if len(values) > 1 else start + 1
+    except (ValueError, IndexError):
+        print("Invalid input. Please enter numbers in the correct format.")
+        return messages
+    if start >= len(messages) or end > len(messages) or start >= end:
+        print("Invalid range. Make sure start is less than end and within the message list.")
+        return messages
+    if input(f"Cutting messages from position {start + 1} to {end}. Proceed? (y for yes, any other key to cancel): ").strip().lower() != 'y':
+        return messages
+    return messages[start:end]

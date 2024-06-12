@@ -4,16 +4,16 @@ import json
 import datetime
 import argcomplete
 import argparse
-from typing import List, Dict
+from typing import List, Dict, Callable
 from enum import Enum, auto
 import traceback
-from utils import Colors
+from utils import Colors, llt_input
 
 from plugins import plugins
 
 import importlib.util
 def load_plugins(plugin_dir):
-    """Dynamically load llt plugins from scripts in the specified directory."""
+    """Dynamically load llt plugins from scripts in the specified dir."""
     for filename in os.listdir(plugin_dir):
         if filename.endswith('.py') and not filename.startswith('__'):
             file_path = os.path.join(plugin_dir, filename)
@@ -22,41 +22,7 @@ def load_plugins(plugin_dir):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
-"""
-class ArgKey(Enum):
-    LL = auto()
-    DETACH = auto()
-    FILE = auto()
-    PROMPT = auto()
-    COMPLETE = auto()
-    EXPORT = auto()
-    ROLE = auto()
-    EXEC = austo()
-    SEARCH = auto()
-    URL = auto()
-    EMAIL = auto()
-    BASE64 = auto()
-    VIEW = auto()
-    NON_INTERACTIVE = auto()
-    WRITE = auto()
-
-startup_functions =  {
-        ArgKey.LL: load_message,
-        ArgKey.FILE: include_file,
-        ArgKey.PROMPT: new_message,
-        ArgKey.DETACH: detach_message,
-        ArgKey.EXPORT: export_messages,
-        ArgKey.SEARCH: search_plugin,
-        ArgKey.EXEC: execute_command,
-        ArgKey.URL: process_web_request,
-        ArgKey.EMAIL: send_email,
-        ArgKey.BASE64: convert_text_base64,
-        ArgKey.COMPLETE: get_completion,
-        ArgKey.VIEW: view_message,
-        ArgKey.NON_INTERACTIVE: run_non_interactive,
-        ArgKey.WRITE: write_message
-    } """
-startup_cmds=  ['load', 'file', 'prompt']
+startup_cmds=  ['load', 'include_file', 'new']
 #llt> find a better way to do this: (25,59)
 
 def parse_arguments() -> argparse.Namespace:
@@ -118,35 +84,51 @@ def llt_shell_log(cmd: str):
     with open(file_path, 'a') as logfile:
         logfile.write(f"llt> {cmd}\n")
 
+n_letter = lambda s, n=1: s[:n].lower() 
+
+def init_cmd_map()-> Dict[str, Callable]:
+    command_map = {}
+    for cmd, function in plugins.items():
+        if cmd not in command_map:
+            command_map[cmd] = function
+        if n_letter(cmd) not in command_map:
+            command_map[n_letter(cmd)] = function
+        elif n_letter(cmd, 2) not in command_map:
+            command_map[n_letter(cmd, 2)] = function
+        elif n_letter(cmd, 3) not in command_map:
+            command_map[n_letter(cmd, 3)] = function
+    return command_map
+
 user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
 
 def llt() -> None:
     args = parse_arguments()
     init_directories(args)
-    messages = []
-    #for cmd in startup_cmds: messages = plugins[cmd](messages, args)
+    messages = list()
+
+    for cmd in startup_cmds: 
+        if cmd in vars(args):
+            messages = plugins[cmd](messages, args)
+
+    cmds = init_cmd_map()
+    print(cmds)
 
     Colors.print_header()
     print(user_greeting(os.getenv('USER'), args))
-    command_map = {}
-    for command, function in plugins.items():
-        command_map[command] = function
-        if command[0] not in command_map: command_map[command[0]] = function
-        elif len(command) > 2 and command[1] not in command_map: command_map[command[1]] = function
 
     while True:
         try:
-            cmd = input('llt> ')
-            if cmd in command_map:
-                messages = command_map[cmd](messages, args)
+            cmd = llt_input(cmds.keys())
+            if cmd in cmds:
+                messages = cmds[cmd](messages, args)
                 log_command(cmd, messages, args)
-            else: messages.append({ 'role': args.role, 'content': cmd })
+            else: messages.append({ 'role': args.role, 'content': cmd})
             llt_shell_log(cmd)
         except KeyboardInterrupt:
             print("\nExiting...")
             break
         except Exception as e:
-            print(f"An error occurred: {e}\nAppend error ")
+            print(f"An error occurred: {e}\n")
             print(traceback.format_exc())
 
 if __name__ == "__main__":

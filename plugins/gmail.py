@@ -12,6 +12,8 @@ from googleapiclient.errors import HttpError
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from plugins import plugin
+
 credentials_file = os.path.expanduser('~/llt/credentials.json')
 token_file = os.path.expanduser('~/llt/token.json')
 
@@ -51,6 +53,7 @@ def create_message(email: Email):
     raw = raw.decode()
     return {'raw': raw}
 
+@plugin
 def send_email(messages: List[Dict], args: Dict)-> List[Dict]:
     config = load_config(os.path.expanduser('~/llt/test_email.json'))
     email = Email(to=config['to'], subject=config['subject'].format(subject="message from llt"), message=messages[-1]['content'])

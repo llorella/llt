@@ -5,7 +5,7 @@
 !plugins
 !main.py
 !plugins.py
-!api.py
+!plugins/completion.py
 !editor.py
 !message.py
 !utils.py

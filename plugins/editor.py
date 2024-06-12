@@ -4,9 +4,9 @@ import time
 import base64
 from typing import List, Dict
 import pyperclip
+import json
 
-from message import Message
-from utils import path_input, content_input, language_extension_map, inverse_kv_map, get_valid_index, encode_image
+from utils import path_input, content_input, get_valid_index, encode_image
 
 input_action_string = lambda actions: 'Choose an action: ' + ', '.join([("or " if i == len(actions)-1 else "") + f"{action} ({action[0]})" for i, action in enumerate(actions)]) + '?'
 default_editor = 'vim'
@@ -58,12 +58,31 @@ def extract_code_blocks(content: str) -> List[Dict]:
     for language, code in matches: code_blocks.append({'language': language, 'code': code})
     return code_blocks
 
+def run_code_block(code_block: Dict) -> str:
+    language, code = code_block['language'], code_block['code']
+    result = None
+    args = [], shell = False
+    try:
+        if language in ['bash', 'shell']: args = [code], shell = True
+        elif language == 'python': args = ['python3', '-c', code]
+        user_confirm = input(f"Code:\n{code}\nExecute (x) or skip (any) {language} block? ").lower()
+        if user_confirm == 'x':
+            result = subprocess.run(args, 
+                                    shell=shell,
+                                    check=True, 
+                                    stdout=subprocess.PIPE, 
+                                    stderr=subprocess.PIPE,
+                                    universal_newlines=True)
+    except subprocess.CalledProcessError as e:
+        result = f"Error executing command: {e}\nError details:\n{e.stderr}"
+    return result
+
 from plugins import plugin
 
-@plugin
+@plugin 
 def paste_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     paste = pyperclip.paste()
-    messages.append(Message(role='user', content=paste))
+    messages.append({'role': 'user', 'content': paste})
     return messages
 
 @plugin
@@ -72,7 +91,7 @@ def copy_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, a
     return messages
 
 @plugin
-def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+def edit_content(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else index # prompt is any valid verb that precedes the preposition
     action = input(f"{input_action_string(['edit', 'append', 'copy'])}").strip().lower()
     if action in ('e', 'a'):
@@ -86,7 +105,7 @@ def edit_content(messages: List[Message], args: Dict, index: int = -1) -> List[M
     return messages
 
 @plugin
-def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+def code_message(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
     # We create a directory for execution files that corresspond to an ll thread. The kernel of some 'agent' space for navigating a file system.
     os.makedirs(default_exec_dir, exist_ok=True)
@@ -94,45 +113,34 @@ def code_message(messages: List[Message], args: Dict, index: int = -1) -> List[M
     # use descriptive handlers for code blocks
     message_index = get_valid_index(messages, "edit code block of", index)
     code_blocks = extract_code_blocks(messages[message_index]['content'])
-    messages.append(Message(role='user', content='\n'.join([
+    messages.append({'role': 'user', 'content': '\n'.join([
         handle_code_block(code_block, exec_dir)
         for code_block in code_blocks
-    ])))
+    ])})
     return messages
 
 
 @plugin
-def include_file(messages: List[Message], args: Dict) -> List[Message]:
+def include_file(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     if args.non_interactive: file_path = args.file # don't ask user, just use the file path
     else: file_path = path_input(args.file, os.getcwd()) # ask user for file path, in interactive mode
     (_, ext) = os.path.splitext(file_path)
     if ext in image_exts:
-        messages.append(Message(role='user', content=[{"type": "text", "text": args.prompt or content_input()}, {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]))
+        messages.append({'role': 'user', 'content': [{'type': "text", 'text': args.prompt or content_input()}, 
+                                                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{encode_image(file_path)}"}}]})
     else:
         with open(file_path, 'r') as file:
             data = file.read()
-        messages.append(Message(role='user', content=data))
+        messages.append({'role': 'user', 'content': data})
     return messages
-
+                
 @plugin
-def execute_command(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+def execute_command(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
     code_blocks = extract_code_blocks(messages[message_index]['content'])
+    results = []
     for code_block in code_blocks:
-        if code_block['language'] == 'bash' or code_block['language'] == 'shell' or not code_block['language']:
-            user_action = input(f"Code:\n{code_block['code']}\nExecute (x), edit (e), or skip (any) {code_block['language'] or 'text'} block? (y/n): ").lower() 
-            if user_action == 'x':
-                try:
-                    result = subprocess.run(code_block['code'], 
-                                            shell=True, 
-                                            check=True, 
-                                            stdout=subprocess.PIPE, 
-                                            stderr=subprocess.PIPE,
-                                            universal_newlines=True)
-                    messages.append(Message(role='user', content=f"{result.stdout}"))
-                except subprocess.CalledProcessError as e:
-                    messages.append(Message(role='user', content=f"Error executing command: {e}\nError details:\n{e.stderr}"))
-            elif user_action == 'e':    
-                messages.append(Message(role=args.role, content=code_block['code']+"\nCode block edited. Re-trigger command to execute."))   
-                edit_content(messages, args, message_index)
-    return messages
+        output = run_code_block(code_block)
+        result = { 'language': code_block['language'], 'code': code_block['code'], 'output': output }
+        results.append(json.dumps(result), indent=2)
+    messages.append({'role': 'user', 'content': '\n'.join(results)})

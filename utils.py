@@ -40,13 +40,6 @@ class Colors:
         Colors.print_colored("***** Welcome to llt, the little language terminal. *****", Colors.WHITE)
         Colors.print_colored("*********************************************************", Colors.YELLOW)
         Colors.print_colored("*********************************************************\n", Colors.YELLOW)
-    
-def content_input() -> str:
-    print("Enter content below.")
-    Colors.print_colored("*********************************************************", Colors.YELLOW)
-    content = input("> ") or ""
-    Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
-    return content
 
 def directory_completer(dir_path):
     def completer(text, state):
@@ -68,6 +61,13 @@ def list_completer(values):
         matches = [value for value in values if value.startswith(text)]
         return matches[state] if state < len(matches) else None
     return completer
+
+def content_input() -> str:
+    print("Enter content below.")
+    Colors.print_colored("*********************************************************", Colors.YELLOW)
+    content = input("> ") or ""
+    Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
+    return content
     
 def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer_delims(' \t\n;')
@@ -82,6 +82,12 @@ def role_input(default_role: str = None) -> str:
     readline.parse_and_bind("tab: complete")
     readline.set_completer(list_completer(roles))
     return input(f"Enter role (default is {default_role}): ") or default_role
+
+def llt_input(plugin_keys: List[str]) -> str:
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(list_completer(plugin_keys))
+    return input("llt> ")
 
 def count_image_tokens(file_path: str) -> int:
     def resize(width, height):
@@ -159,15 +165,15 @@ language_extension_map = {
 
 inverse_kv_map = lambda d: {v: k for k, v in d.items()}
  
-def get_valid_index(msg_len: int, prompt: str, default=-1):
+def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
     try:
         idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
         if not idx: return default
-        idx = int(idx) % msg_len  # support negative indexing
+        idx = int(idx) % len(messages)  # support negative indexing
     except ValueError:
         print("Invalid input. Using default.")
         idx = default
-    if not -msg_len <= idx < msg_len:
+    if not -len(messages) <= idx < len(messages):
         raise IndexError("Index out of range. No operation will be performed.")
     return idx  
 
