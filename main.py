@@ -5,7 +5,6 @@ import datetime
 import argcomplete
 import argparse
 from typing import List, Dict, Callable
-from enum import Enum, auto
 import traceback
 from utils import Colors, llt_input
 
@@ -22,9 +21,6 @@ def load_plugins(plugin_dir):
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
 
-startup_cmds=  ['load', 'include_file', 'new']
-#llt> find a better way to do this: (25,59)
-
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
@@ -32,19 +28,14 @@ def parse_arguments() -> argparse.Namespace:
         ll_dir = parsed_args.ll_dir if parsed_args.ll_dir else os.path.join(os.getenv('LLT_PATH'), 'll')
         return [f for f in os.listdir(ll_dir) if f.startswith(prefix)]
 
-    parser.add_argument('--ll', '-l', type=str, help="Language log file. JSON formatted list of natural language messages.", default="").completer = get_ll_files
+    parser.add_argument('--load', '--ll', '-l', type=str, help="Language log file. JSON formatted list of natural language messages.", default="").completer = get_ll_files
     parser.add_argument('--file', '-f', type=str, help="Read content from a file and include it in the ll.", default="")
-    parser.add_argument('--update_files', nargs='+', type=str, help="Update files in the ll fs.", default=[])
-    parser.add_argument('--prompt_line', '--llt_hook', nargs='+', type=int, help="Update files in the ll fs.", default=[])
-
-    parser.add_argument('--screen', action='store_true')
 
     parser.add_argument('--prompt', '-p', type=str, help="Prompt string.", default="")
     parser.add_argument('--role', '-r', type=str, help="Specify role.", default="user")
 
     parser.add_argument('--model', '-m', type=str, help="Specify model.", default="gpt-4-turbo")
     parser.add_argument('--temperature', '-t', type=float, help="Specify temperature.", default=0.9)
-    
     parser.add_argument('--max_tokens', type=int, help="Maximum number of tokens to generate.", default=4096)
     parser.add_argument('--logprobs', type=int, help="Include log probabilities in the output, up to the specified number of tokens.", default=0)
     parser.add_argument('--top_p', type=float, help="Sample from top P tokens.", default=1.0)
@@ -56,14 +47,12 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--non_interactive', '-n', action='store_true', help="Run in non-interactive mode.")
 
     # All plugin flags here
-    parser.add_argument('--complete', action='store_true', help="Complete the last message.")
+    parser.add_argument('--completion', '-c', action='store_true', help="Complete the last message.")
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
-    parser.add_argument('--export', action='store_true', help="Export messages to a file.")
-    parser.add_argument('--exec', action='store_true', help="Execute the last message")
+    parser.add_argument('--execute', action='store_true', help="Execute the last message")
     parser.add_argument('--view', action='store_true', help="Print the last message.")
     parser.add_argument('--write', action='store_true', help="Write conversation to file (for non-interactive mode).")
 
-    parser.add_argument('--search', action='store_true', help="Exa search plugin.")
     parser.add_argument('--email', action='store_true', help="Send an email with the last message.")
     parser.add_argument('--url', type=str, help="Dump a list of user specified tags and their contents to next message.", default=None, choices=['pre', 'p'])
 
@@ -84,34 +73,35 @@ def llt_shell_log(cmd: str):
     with open(file_path, 'a') as logfile:
         logfile.write(f"llt> {cmd}\n")
 
-n_letter = lambda s, n=1: s[:n].lower() 
+n_abbv = lambda s, n=1: s[:n].lower() 
 
 def init_cmd_map()-> Dict[str, Callable]:
     command_map = {}
     for cmd, function in plugins.items():
         if cmd not in command_map:
             command_map[cmd] = function
-        if n_letter(cmd) not in command_map:
-            command_map[n_letter(cmd)] = function
-        elif n_letter(cmd, 2) not in command_map:
-            command_map[n_letter(cmd, 2)] = function
-        elif n_letter(cmd, 3) not in command_map:
-            command_map[n_letter(cmd, 3)] = function
+        if n_abbv(cmd) not in command_map:
+            command_map[n_abbv(cmd)] = function
+        elif len(cmd) > 2 and n_abbv(cmd, 2) not in command_map:
+            command_map[n_abbv(cmd, 2)] = function
+        seps = ["-", "_"]
+        for sep in seps:
+            split_cmd = cmd.split(sep)
+            if split_cmd: command_map[split_cmd[0]] = function
     return command_map
 
-user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.ll if args.ll else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
+user_greeting = lambda username, args: f"Hello {username}! You are using ll file {args.load if args.load else None}, with model {args.model} set to temperature {args.temperature}. Type 'help' for available commands."
 
 def llt() -> None:
     args = parse_arguments()
     init_directories(args)
     messages = list()
 
-    for cmd in startup_cmds: 
-        if cmd in vars(args):
-            messages = plugins[cmd](messages, args)
-
     cmds = init_cmd_map()
-    print(cmds)
+    startup_cmds =  ['load', 'file', 'prompt', 'completion']
+    for cmd in cmds:
+        if args.__contains__(cmd) and args.__getattribute__(cmd) and cmd in startup_cmds:
+            messages = cmds[cmd](messages, args)
 
     Colors.print_header()
     print(user_greeting(os.getenv('USER'), args))

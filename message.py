@@ -8,13 +8,17 @@ class Message(Dict):
     content: any
 
 def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    ll_path = path_input(args.ll, args.ll_dir) if not args.non_interactive\
-        else os.path.join(args.ll_dir, args.ll)
+    ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive\
+        else os.path.join(args.ll_dir, args.load)
+    if os.path.isdir(ll_path): ll_path = os.path.join(ll_path, "default.ll")
     if not os.path.exists(ll_path):
         os.makedirs(os.path.dirname(ll_path), exist_ok=True)
         return messages
     with open(ll_path, 'r') as file:
-        messages.extend(json.load(file))
+        ll = json.load(file)
+        idx = get_valid_index(messages, "load from", 0)
+        if idx == -1: messages.extend(ll)
+        elif not idx: messages = ll
     return messages
 
 def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
@@ -42,7 +46,7 @@ def detach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     message_index = get_valid_index(messages, "detach", index)  
     return [messages.pop(message_index)]
 
-def append(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
+def fold(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
     messages[-2]['content'] += messages[-1]['content']
     messages.pop()
     return messages
@@ -50,6 +54,18 @@ def append(messages: List[Message], args: Optional[Dict] = None) -> List[Message
 def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     message_index = get_valid_index(messages, "insert", index)
     messages.insert(message_index, Message(role=args.role, content=args.prompt))
+    return messages
+
+def content(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    from utils import content_input
+    index = get_valid_index(messages, "modify content of", index)
+    messages[index]['content'] = content_input()
+    return messages
+
+def role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    from utils import role_input
+    index = get_valid_index(messages, "modify role of", index)
+    messages[index]['role'] = role_input()
     return messages
 
 def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:

@@ -79,19 +79,32 @@ def run_code_block(code_block: Dict) -> str:
 
 from plugins import plugin
 
+@plugin
+def edit(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    ll_file = args.load if args.load else os.path.join(args.ll_dir, "default.ll")
+    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
+    os.makedirs(default_exec_dir, exist_ok=True)
+    exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
+    message_index = get_valid_index(messages, "edit code block of", index)
+    messages.append({'role': 'user', 'content': '\n'.join([
+        handle_code_block(code_block, exec_dir)
+        for code_block in extract_code_blocks(messages[message_index]['content'])
+    ])})
+    return messages
+
 @plugin 
-def paste_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+def paste(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     paste = pyperclip.paste()
     messages.append({'role': 'user', 'content': paste})
     return messages
 
 @plugin
-def copy_content(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+def copy(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     copy_to_clipboard(messages[-1]['content'])
     return messages
 
 @plugin
-def edit_content(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+def content(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "edit content of", index) if not args.non_interactive else index # prompt is any valid verb that precedes the preposition
     action = input(f"{input_action_string(['edit', 'append', 'copy'])}").strip().lower()
     if action in ('e', 'a'):
@@ -105,23 +118,11 @@ def edit_content(messages: List[Dict[str, any]], args: Dict, index: int = -1) ->
     return messages
 
 @plugin
-def code_message(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
-    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
-    # We create a directory for execution files that corresspond to an ll thread. The kernel of some 'agent' space for navigating a file system.
-    os.makedirs(default_exec_dir, exist_ok=True)
-    exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
-    # use descriptive handlers for code blocks
-    message_index = get_valid_index(messages, "edit code block of", index)
-    code_blocks = extract_code_blocks(messages[message_index]['content'])
-    messages.append({'role': 'user', 'content': '\n'.join([
-        handle_code_block(code_block, exec_dir)
-        for code_block in code_blocks
-    ])})
-    return messages
-
+def role(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    message_index = get_valid_index(messages, "edit role of", index) if not args.non_interactive else index # prompt is any valid verb that precedes the preposition
 
 @plugin
-def include_file(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+def file_include(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
     if args.non_interactive: file_path = args.file # don't ask user, just use the file path
     else: file_path = path_input(args.file, os.getcwd()) # ask user for file path, in interactive mode
     (_, ext) = os.path.splitext(file_path)
