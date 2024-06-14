@@ -9,7 +9,7 @@ from typing import List, Dict
 from bs4 import BeautifulSoup, Tag
 
 from utils import get_valid_index
-from message import Message
+from plugins import plugin
 
 CodeBlock = namedtuple('CodeBlock', ['description', 'code', 'language'])
 
@@ -56,7 +56,8 @@ def valid_url(url: str) -> bool:
     else:
         return False
     
-def process_web_request(messages: List[Message], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+@plugin    
+def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "fetch url from", index) if not args.non_interactive else index  # prompt is any valid verb that precedes the preposition
     html_content = fetch_html(messages[message_index]['content']) 
     tags = find_tags(html_content, tag=args.web)
@@ -64,7 +65,7 @@ def process_web_request(messages: List[Message], args: Dict, index: int = -1) ->
     if args.web == 'pre': content = [f"Description: {description}\n{(language+' ' if language else '')}code block:\n{code}" 
                                     for description, code, language in get_code_blocks_from_tags(tags)]
     elif args.web == 'p': content = [tag.get_text() for tag in tags]
-    messages.append(Message(role=args.role, content="\n".join(content)))
+    messages.append({'role': args.role, 'content': "\n".join(content)})
     return messages
 
 def main(): 
@@ -82,7 +83,7 @@ def main():
         else: tag = 'pre'
         from argparse import Namespace
         args = Namespace(role='user', web=tag)
-        print(json.dumps(process_web_request([Message(role='user', content=url)], args, 0), indent=2))
+        print(json.dumps(url_fetch([{'role': 'user', 'content': url}], args, 0), indent=2))
     else:
         print("Usage: script.py <url>")
     return 0

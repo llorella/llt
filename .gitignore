@@ -2,8 +2,10 @@
 *
 
 # explicitly include the files you want to track
-!api.py
+!plugins
 !main.py
+!plugins.py
+!plugins/completion.py
 !editor.py
 !message.py
 !utils.py

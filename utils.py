@@ -40,13 +40,6 @@ class Colors:
         Colors.print_colored("***** Welcome to llt, the little language terminal. *****", Colors.WHITE)
         Colors.print_colored("*********************************************************", Colors.YELLOW)
         Colors.print_colored("*********************************************************\n", Colors.YELLOW)
-    
-def content_input() -> str:
-    print("Enter content below.")
-    Colors.print_colored("*********************************************************", Colors.YELLOW)
-    content = input("> ") or ""
-    Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
-    return content
 
 def directory_completer(dir_path):
     def completer(text, state):
@@ -68,6 +61,19 @@ def list_completer(values):
         matches = [value for value in values if value.startswith(text)]
         return matches[state] if state < len(matches) else None
     return completer
+
+def list_input(values: List[str], input_string: str = "Enter a value from list") -> str:
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(list_completer(values))
+    return input(input_string +  " (tab to autocomplete): ")
+
+def content_input() -> str:
+    print("Enter content below.")
+    Colors.print_colored("*********************************************************", Colors.YELLOW)
+    content = input("> ") or ""
+    Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
+    return content
     
 def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer_delims(' \t\n;')
@@ -76,12 +82,11 @@ def path_input(default_file: str = None, root_dir: str = None) -> str:
     file_path = input(f"Enter file path (default is {default_file}): ")
     return os.path.join(root_dir if root_dir else os.getcwd(), os.path.expanduser(file_path) if file_path else default_file)
 
-def role_input(default_role: str = None) -> str:
-    roles = ['user', 'assistant', 'system']
+def llt_input(plugin_keys: List[str]) -> str:
     readline.set_completer_delims(' \t\n;')
     readline.parse_and_bind("tab: complete")
-    readline.set_completer(list_completer(roles))
-    return input(f"Enter role (default is {default_role}): ") or default_role
+    readline.set_completer(list_completer(plugin_keys))
+    return input("llt> ")
 
 def count_image_tokens(file_path: str) -> int:
     def resize(width, height):
@@ -133,6 +138,32 @@ def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
     
+
+# Function to encode the image
+def _encode_image(image_content):
+    return base64.b64encode(image_content).decode('utf-8')
+
+import tempfile 
+from io import BytesIO
+
+def encoded_img_to_pil_img(data_str):
+    base64_str = data_str.replace("data:image/png;base64,", "")
+    image_data = base64.b64decode(base64_str)
+    image = Image.open(BytesIO(image_data))
+
+    return image
+
+
+def save_to_tmp_img_file(data_str):
+    base64_str = data_str.replace("data:image/png;base64,", "")
+    image_data = base64.b64decode(base64_str)
+    image = Image.open(BytesIO(image_data))
+
+    tmp_img_path = os.path.join(tempfile.mkdtemp(), "tmp_img.png")
+    image.save(tmp_img_path)
+
+    return tmp_img_path
+    
 def convert_text_base64(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "convert text to base64", index) if not args.non_interactive else index
     content = messages[message_index]['content']
@@ -159,15 +190,15 @@ language_extension_map = {
 
 inverse_kv_map = lambda d: {v: k for k, v in d.items()}
  
-def get_valid_index(msg_len: int, prompt: str, default=-1):
+def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
     try:
         idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
         if not idx: return default
-        idx = int(idx) % msg_len  # support negative indexing
+        idx = int(idx) % len(messages)  # support negative indexing
     except ValueError:
         print("Invalid input. Using default.")
         idx = default
-    if not -msg_len <= idx < msg_len:
+    if not -len(messages) <= idx < len(messages):
         raise IndexError("Index out of range. No operation will be performed.")
     return idx  
 
