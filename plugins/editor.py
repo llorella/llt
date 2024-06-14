@@ -95,7 +95,7 @@ def run_code_block(code_block: Dict) -> str:
 @plugin
 def edit(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     ll_file = args.load if args.load else os.path.join(args.ll_dir, "default.ll")
-    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.ll)[0])
+    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.load)[0])
     os.makedirs(default_exec_dir, exist_ok=True)
     exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
     message_index = get_valid_index(messages, "edit code block of", index)

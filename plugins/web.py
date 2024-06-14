@@ -60,11 +60,11 @@ def valid_url(url: str) -> bool:
 def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "fetch url from", index) if not args.non_interactive else index  # prompt is any valid verb that precedes the preposition
     html_content = fetch_html(messages[message_index]['content']) 
-    tags = find_tags(html_content, tag=args.web)
+    tags = find_tags(html_content, tag=args.url)
     content = []
-    if args.web == 'pre': content = [f"Description: {description}\n{(language+' ' if language else '')}code block:\n{code}" 
+    if args.url == 'pre': content = [f"Description: {description}\n{(language+' ' if language else '')}code block:\n{code}" 
                                     for description, code, language in get_code_blocks_from_tags(tags)]
-    elif args.web == 'p': content = [tag.get_text() for tag in tags]
+    elif args.url == 'p': content = [tag.get_text() for tag in tags]
     messages.append({'role': args.role, 'content': "\n".join(content)})
     return messages
 
