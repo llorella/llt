@@ -64,7 +64,7 @@ def init_directories(args: argparse.Namespace) -> None:
         os.makedirs(directory, exist_ok=True)
 
 def log_command(command: str, message: dict, args) -> None:
-    log_path = f'{args.cmd_dir}/{os.path.splitext(os.path.basename(args.ll))[0]}.jsonl'
+    log_path = f'{args.cmd_dir}/{os.path.splitext(os.path.basename(args.load))[0]}.jsonl'
     with open(log_path, 'a') as logfile:
         logfile.write(json.dumps({'command': command, 'message': message}))
 

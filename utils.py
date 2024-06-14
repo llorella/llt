@@ -62,6 +62,12 @@ def list_completer(values):
         return matches[state] if state < len(matches) else None
     return completer
 
+def list_input(values: List[str], input_string: str = "Enter a value from list") -> str:
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(list_completer(values))
+    return input(input_string +  " (tab to autocomplete): ")
+
 def content_input() -> str:
     print("Enter content below.")
     Colors.print_colored("*********************************************************", Colors.YELLOW)

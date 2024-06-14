@@ -1,7 +1,7 @@
 import os
 import json
 from typing import Optional, Dict, List
-from utils import content_input, path_input, colors, get_valid_index
+from utils import content_input, path_input, colors, get_valid_index, list_input
 
 class Message(Dict):
     role: str
@@ -22,7 +22,7 @@ def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     return messages
 
 def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    ll_path = path_input(args.ll, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.ll)
+    ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.load)
     with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
     return messages
@@ -47,7 +47,7 @@ def detach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     return [messages.pop(message_index)]
 
 def fold(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    messages[-2]['content'] += messages[-1]['content']
+    messages[-2]['content'] += "\n" + messages[-1]['content']
     messages.pop()
     return messages
 
@@ -63,9 +63,8 @@ def content(messages: List[Message], args: Optional[Dict] = None, index: int = -
     return messages
 
 def role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
-    from utils import role_input
     index = get_valid_index(messages, "modify role of", index)
-    messages[index]['role'] = role_input()
+    messages[index]['role'] = list_input(["user", "assistant", "system", "tool"], "Select role")
     return messages
 
 def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:

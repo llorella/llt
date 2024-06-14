@@ -6,7 +6,8 @@ from typing import List, Dict
 import pyperclip
 import json
 
-from utils import path_input, content_input, get_valid_index, encode_image
+from utils import path_input, content_input, get_valid_index, encode_image, language_extension_map
+from plugins import plugin
 
 input_action_string = lambda actions: 'Choose an action: ' + ', '.join([("or " if i == len(actions)-1 else "") + f"{action} ({action[0]})" for i, action in enumerate(actions)]) + '?'
 default_editor = 'vim'
@@ -49,6 +50,20 @@ def handle_code_block(code_block: Dict, dir_path: str) -> str:
         return 'Copied code block to clipboard.'
     return "Skipped."
 
+code_block = lambda code, language: f"```{language}\n{code}\n```"
+
+@plugin
+def wrap_in_code_block(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+    message_index = get_valid_index(messages, "wrap in code block", index)
+    file_path = path_input(args.file, os.getcwd())
+    base, ext = os.path.splitext(file_path)
+    if ext in language_extension_map: language = language_extension_map[ext]
+    else: language = None
+    with open(file_path, 'r') as file:
+        data = file.read()
+        messages.append({'role': 'user', 'content': code_block(data, language)})
+    return messages
+
 import re
 code_block_pattern = re.compile(r'```(\w+)\n(.*?)\n```', re.DOTALL)  
 
@@ -76,8 +91,6 @@ def run_code_block(code_block: Dict) -> str:
     except subprocess.CalledProcessError as e:
         result = f"Error executing command: {e}\nError details:\n{e.stderr}"
     return result
-
-from plugins import plugin
 
 @plugin
 def edit(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
@@ -116,10 +129,6 @@ def content(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List
     elif action == 'c':
         copy_to_clipboard(messages[message_index]['content'])
     return messages
-
-@plugin
-def role(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
-    message_index = get_valid_index(messages, "edit role of", index) if not args.non_interactive else index # prompt is any valid verb that precedes the preposition
 
 @plugin
 def file_include(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:

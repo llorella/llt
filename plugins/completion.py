@@ -117,10 +117,32 @@ def get_local_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str
     
 from plugins import plugin
 from message import Message
+
 @plugin
 def completion(messages: List[Message], args: Dict) -> Dict[str, any]: 
     provider, api_key_string, completion_url = get_provider_details(args.model)
     if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
     else: completion = send_request(completion_url, api_key_string, messages, args)
     messages.append(completion)
+    return messages
+
+@plugin
+def model(messages: List[Message], args: Dict) -> Dict[str, any]:
+    from utils import list_input
+    model = list_input(full_model_choices, "Select model to use")
+    if model: args.model = model
+    return messages
+
+@plugin
+def temperature(messages: List[Message], args: Dict) -> Dict[str, any]:
+    from utils import list_input
+    temperature = input(f"Enter temperature (default is {args.temperature}): ")
+    if temperature: args.temperature = float(temperature)
+    return messages
+
+@plugin
+def max_tokens(messages: List[Message], args: Dict) -> Dict[str, any]:
+    from utils import list_input
+    max_tokens = input(f"Enter max tokens (default is {args.max_tokens}): ")
+    if max_tokens: args.max_tokens = int(max_tokens)
     return messages
