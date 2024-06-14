@@ -22,7 +22,12 @@ def get_provider_details(model_name: str):
     for provider, details in api_config['providers'].items():
         for model, versions in details.get('models', {}).items():
             if model_name in [f"{model}-{version}" for version in versions]:
-                return provider, details["api_key"], details['completion_url']
+                api_key_string, completion_url = None, None
+                if details.__contains__("api_key"):
+                    api_key_string = details.__getitem__("api_key")
+                if details.__contains__("completion_url"):
+                    completion_url = details.__getitem__("completion_url")
+                return provider, api_key_string, completion_url
     raise ValueError(f"Model {model_name} not found in configuration.")
 
 def send_request(completion_url: str, api_key_string: str, messages: List[Dict[str, Any]], args: Dict[str, Any]) -> Dict[str, Any]:
@@ -57,10 +62,9 @@ def send_request(completion_url: str, api_key_string: str, messages: List[Dict[s
                             break
     except requests.RequestException as e:
         print(f"Request failed: {e}")
-
     return { 'role': 'assistant', 'content': full_response_content }
 
-# anthropic's api is annoyingly different from other providers
+# anthropic's api is  different from other providers
 import anthropic
 def get_anthropic_completion(messages: List[Dict[str, any]], args: Dict) -> Dict[str, any]:
     anthropic_client = anthropic.Client()
@@ -122,6 +126,7 @@ from message import Message
 def completion(messages: List[Message], args: Dict) -> Dict[str, any]: 
     provider, api_key_string, completion_url = get_provider_details(args.model)
     if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
+    if provider == 'local': completion = get_local_completion(messages, args)
     else: completion = send_request(completion_url, api_key_string, messages, args)
     messages.append(completion)
     return messages

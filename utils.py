@@ -82,13 +82,6 @@ def path_input(default_file: str = None, root_dir: str = None) -> str:
     file_path = input(f"Enter file path (default is {default_file}): ")
     return os.path.join(root_dir if root_dir else os.getcwd(), os.path.expanduser(file_path) if file_path else default_file)
 
-def role_input(default_role: str = None) -> str:
-    roles = ['user', 'assistant', 'system']
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind("tab: complete")
-    readline.set_completer(list_completer(roles))
-    return input(f"Enter role (default is {default_role}): ") or default_role
-
 def llt_input(plugin_keys: List[str]) -> str:
     readline.set_completer_delims(' \t\n;')
     readline.parse_and_bind("tab: complete")
@@ -144,6 +137,32 @@ def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
 def encode_image(image_path: str) -> str:
     with open(image_path, "rb") as image_file:
             return base64.b64encode(image_file.read()).decode('utf-8')
+    
+
+# Function to encode the image
+def _encode_image(image_content):
+    return base64.b64encode(image_content).decode('utf-8')
+
+import tempfile 
+from io import BytesIO
+
+def encoded_img_to_pil_img(data_str):
+    base64_str = data_str.replace("data:image/png;base64,", "")
+    image_data = base64.b64decode(base64_str)
+    image = Image.open(BytesIO(image_data))
+
+    return image
+
+
+def save_to_tmp_img_file(data_str):
+    base64_str = data_str.replace("data:image/png;base64,", "")
+    image_data = base64.b64decode(base64_str)
+    image = Image.open(BytesIO(image_data))
+
+    tmp_img_path = os.path.join(tempfile.mkdtemp(), "tmp_img.png")
+    image.save(tmp_img_path)
+
+    return tmp_img_path
     
 def convert_text_base64(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     message_index = get_valid_index(messages, "convert text to base64", index) if not args.non_interactive else index

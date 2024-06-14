@@ -54,7 +54,7 @@ def create_message(email: Email):
     return {'raw': raw}
 
 @plugin
-def send_email(messages: List[Dict], args: Dict)-> List[Dict]:
+def email(messages: List[Dict], args: Dict)-> List[Dict]:
     config = load_config(os.path.expanduser('~/llt/test_email.json'))
     email = Email(to=config['to'], subject=config['subject'].format(subject="message from llt"), message=messages[-1]['content'])
     try:
@@ -71,4 +71,4 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         print(f"Usage: {sys.argv[0]}")
         sys.exit(1)
-    send_email([{'content': f"{sys.argv[1]}"}], {})
+    email([{'content': f"{sys.argv[1]}"}], {})

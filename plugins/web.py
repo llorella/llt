@@ -83,7 +83,7 @@ def main():
         else: tag = 'pre'
         from argparse import Namespace
         args = Namespace(role='user', web=tag)
-        print(json.dumps(process_web_request([{'role': 'user', 'content': url}], args, 0), indent=2))
+        print(json.dumps(url_fetch([{'role': 'user', 'content': url}], args, 0), indent=2))
     else:
         print("Usage: script.py <url>")
     return 0
