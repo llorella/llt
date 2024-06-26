@@ -24,6 +24,7 @@ def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
 
 def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.load)
+    os.makedirs(os.path.dirname(ll_path), exist_ok=True)
     with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
     return messages

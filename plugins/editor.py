@@ -6,7 +6,7 @@ from typing import List, Dict
 import pyperclip
 import json
 
-from utils import path_input, content_input, get_valid_index, encode_image, language_extension_map
+from utils import path_input, content_input, list_input, get_valid_index, encode_image, language_extension_map
 from plugins import plugin
 
 input_action_string = lambda actions: 'Choose an action: ' + ', '.join([("or " if i == len(actions)-1 else "") + f"{action} ({action[0]})" for i, action in enumerate(actions)]) + '?'
@@ -94,8 +94,8 @@ def run_code_block(code_block: Dict) -> str:
 
 @plugin
 def edit(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
-    ll_file = args.load if args.load else os.path.join(args.ll_dir, "default.ll")
-    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(args.load)[0])
+    ll_file = os.path.basename(args.load) if args.load else os.path.join(args.ll_dir, "default.ll")   
+    default_exec_dir = os.path.join(args.exec_dir, os.path.splitext(ll_file)[0])
     os.makedirs(default_exec_dir, exist_ok=True)
     exec_dir = path_input(default_exec_dir) if not args.non_interactive else default_exec_dir
     message_index = get_valid_index(messages, "edit code block of", index)
@@ -128,6 +128,24 @@ def content(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List
         os.remove(temp_file)
     elif action == 'c':
         copy_to_clipboard(messages[message_index]['content'])
+    return messages
+
+@plugin 
+def image(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+    if args.non_interactive: image_path = args.image_path # don't ask user, just use the file path
+
+    
+@plugin
+def code_block(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    idx = get_valid_index(messages, "wrap in code block", index)
+    (_, ext) = os.path.splitext(args.file)
+    print(ext)
+    default_language = language_extension_map[ext] if ext in language_extension_map else None
+    language_input = list_input(list(language_extension_map.keys()), f"Select language to use (default is {default_language})")
+    if language_input: language = language_extension_map[language_input]
+    else: language = default_language
+    content = messages[idx]['content']
+    messages[idx]['content'] = f"```{language}\n{content}\n```"
     return messages
 
 @plugin
