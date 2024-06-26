@@ -50,6 +50,8 @@ def send_request(completion_url: str, api_key_string: str, messages: List[Dict[s
                 if chunk:
                     decoded_chunk = chunk.decode('utf-8')
                     if decoded_chunk.startswith("data: "):
+                        if decoded_chunk.startswith("data: [DONE]"):
+                            break
                         json_data = json.loads(decoded_chunk[6:])
                         choice = json_data['choices'][0]
                         delta = choice['delta']
@@ -126,7 +128,7 @@ from message import Message
 def completion(messages: List[Message], args: Dict) -> Dict[str, any]: 
     provider, api_key_string, completion_url = get_provider_details(args.model)
     if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
-    if provider == 'local': completion = get_local_completion(messages, args)
+    elif provider == 'local': completion = get_local_completion(messages, args)
     else: completion = send_request(completion_url, api_key_string, messages, args)
     messages.append(completion)
     return messages

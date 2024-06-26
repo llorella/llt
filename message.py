@@ -19,6 +19,7 @@ def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
         idx = get_valid_index(messages, "load from", 0)
         if idx == -1: messages.extend(ll)
         elif not idx: messages = ll
+        args.load = ll_path
     return messages
 
 def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
@@ -27,13 +28,8 @@ def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
         json.dump(messages, file, indent=2)
     return messages
 
-def new(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    if args.__contains__('prompt') and args.prompt:
-        content = args.prompt
-        args.__delattr__('prompt')
-    else:
-        content = content_input()
-    message = Message(role=args.role, content=content)
+def prompt(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+    message = Message(role=args.role, content=args.prompt)
     messages.append(message)
     return messages
 
@@ -63,6 +59,11 @@ def content(messages: List[Message], args: Optional[Dict] = None, index: int = -
     return messages
 
 def role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    """ if not messages: 
+        # on startup, 
+        # add string descriptions
+        messages.append(Message(role=args.role, content=args.prompt))
+        return messages """
     index = get_valid_index(messages, "modify role of", index)
     messages[index]['role'] = list_input(["user", "assistant", "system", "tool"], "Select role")
     return messages

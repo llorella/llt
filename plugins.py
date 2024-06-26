@@ -8,7 +8,7 @@ message_plugins = {
     'cut': message.cut,
     'insert': message.insert,
     'remove': message.remove,
-    'prompt': message.new
+    'prompt': message.prompt
 }
 
 util_plugins = {
