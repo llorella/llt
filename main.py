@@ -48,7 +48,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('-n', '--non_interactive', action='store_true', help="Run in non-interactive mode.")
 
     # Plugin flags
-    parser.add_argument('-c', '--completion', action='store_true', help="Complete the last message.")
+    parser.add_argument('-c', '--complete', action='store_true', help="Complete the last message.")
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
     parser.add_argument('--execute', action='store_true', help="Execute the last message")
     parser.add_argument('--view', action='store_true', help="Print the last message.")
@@ -101,7 +101,7 @@ def llt() -> None:
     messages = []
 
     cmds = init_cmd_map()
-    startup_cmds = ['load', 'file', 'prompt', 'completion']
+    startup_cmds = ['load', 'file', 'prompt', 'completion', 'execute']
     for cmd in cmds:
         if getattr(args, cmd, None) and cmd in startup_cmds:
             messages = cmds[cmd](messages, args)
