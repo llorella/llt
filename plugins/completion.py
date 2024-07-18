@@ -125,7 +125,7 @@ from plugins import plugin
 from message import Message
 
 @plugin
-def completion(messages: List[Message], args: Dict) -> Dict[str, any]: 
+def complete(messages: List[Message], args: Dict) -> Dict[str, any]: 
     provider, api_key_string, completion_url = get_provider_details(args.model)
     if provider == 'anthropic': completion = get_anthropic_completion(messages, args)
     elif provider == 'local': completion = get_local_completion(messages, args)

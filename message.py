@@ -24,6 +24,7 @@ def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
 
 def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.load)
+    os.makedirs(os.path.dirname(ll_path), exist_ok=True)
     with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
     return messages
@@ -72,10 +73,19 @@ def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -
     if not messages: return messages
     def view_helper(message: Message, idx: int) -> str:
         role, content = message['role'], message['content']
-        if type(content) == list: content = "Image handling being implemented."
+        print_content = ""
+        if isinstance(content, list): 
+            for item in content:
+                if item['type'] == 'text': 
+                    print_content += item['text'] + "\n"
+                elif item['type'] == 'image_url': 
+                    print_content += f"Image path: {item['image_url']['url']}"
+        else: 
+            print_content = content
         color = colors.get(role, colors['reset'])
         print(f"{color}[{role.capitalize()}]{colors['reset']}")
-        for line in content.split('\\n'): print(line)
+        #for line in content.split('\\n'): print(line)
+        print(print_content)
         print(f"{color}[/{role.capitalize()}]{colors['reset']}")
         print(f"\nMessage {idx} of {len(messages)}")
         

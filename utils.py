@@ -1,17 +1,15 @@
-import os, sys
-import pprint
+# utils.py
+import os
+import sys
 import readline
 import base64
 import tiktoken
 from PIL import Image
 from math import ceil
-import json
-
+import tempfile
+from io import BytesIO
+import pprint
 from typing import List, Dict
-
-def quit_program(Dicts: List, args: Dict) -> None:
-    sys.exit(0)
-
 colors = {  
     'system': '\033[34m',    # blue
     'user': '\033[32m',      # green
@@ -74,7 +72,7 @@ def content_input() -> str:
     content = input("> ") or ""
     Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
     return content
-    
+
 def path_input(default_file: str = None, root_dir: str = None) -> str:
     readline.set_completer_delims(' \t\n;')
     readline.parse_and_bind("tab: complete")
@@ -109,87 +107,40 @@ def count_image_tokens(file_path: str) -> int:
     with Image.open(file_path) as image:
         width, height = image.size
         return count_image_tokens(width, height)
-    
-def is_base64(text):
-    try:
-        base64.b64decode(text)
-        return True
-    except:
-        return False
-    
+
+def encode_image(image_path: str) -> str:
+    with open(image_path, "rb") as image_file:
+        return base64.b64encode(image_file.read()).decode('utf-8')
+
+def encoded_img_to_pil_img(data_str):
+    base64_str = data_str.replace("data:image/png;base64,", "")
+    image_data = base64.b64decode(base64_str)
+    return Image.open(BytesIO(image_data))
+
+def save_to_tmp_img_file(data_str):
+    image = encoded_img_to_pil_img(data_str)
+    tmp_img_path = os.path.join(tempfile.mkdtemp(), "tmp_img.png")
+    image.save(tmp_img_path)
+    return tmp_img_path
+
+# Message utilities
 def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
     num_tokens, content = 0, ""
-    for idx in range(len(messages)):
-        msg_content = messages[idx]['content']
-        if type(msg_content) == list:
-            for i in range(len(msg_content)):
-                msg_type = msg_content[i]['type']
-                msg_value = msg_content[i][msg_type]
-                if msg_type == 'text': content+=msg_value
-                #elif msg_type== 'image_url': num_tokens += count_image_tokens(msg_value['url'])
-        else: 
-            content+=msg_content
+    for msg in messages:
+        msg_content = msg['content']
+        if isinstance(msg_content, list):
+            for item in msg_content:
+                if item['type'] == 'text':
+                    content += item['text']
+                # elif item['type'] == 'image_url':
+                #     num_tokens += count_image_tokens(item['image_url']['url'])
+        else:
+            content += msg_content
     encoding = tiktoken.encoding_for_model("gpt-4")
     num_tokens += 4 + len(encoding.encode(content))
     print(f"Tokens: {num_tokens}")
     return num_tokens
 
-def encode_image(image_path: str) -> str:
-    with open(image_path, "rb") as image_file:
-            return base64.b64encode(image_file.read()).decode('utf-8')
-    
-
-# Function to encode the image
-def _encode_image(image_content):
-    return base64.b64encode(image_content).decode('utf-8')
-
-import tempfile 
-from io import BytesIO
-
-def encoded_img_to_pil_img(data_str):
-    base64_str = data_str.replace("data:image/png;base64,", "")
-    image_data = base64.b64decode(base64_str)
-    image = Image.open(BytesIO(image_data))
-
-    return image
-
-
-def save_to_tmp_img_file(data_str):
-    base64_str = data_str.replace("data:image/png;base64,", "")
-    image_data = base64.b64decode(base64_str)
-    image = Image.open(BytesIO(image_data))
-
-    tmp_img_path = os.path.join(tempfile.mkdtemp(), "tmp_img.png")
-    image.save(tmp_img_path)
-
-    return tmp_img_path
-    
-def convert_text_base64(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
-    message_index = get_valid_index(messages, "convert text to base64", index) if not args.non_interactive else index
-    content = messages[message_index]['content']
-    messages[message_index]['content'] = base64.b64encode(content.encode('utf-8')).decode('utf-8')
-    return messages
-
-language_extension_map = {
-    '.py': 'python',
-    '.sh': 'shell',
-    '.md': 'markdown',
-    '.html': 'html',
-    '.css': 'css',
-    '.js': 'javascript',
-    '.ts': 'typescript',
-    '.json': 'json',
-    '.yaml': 'yaml',
-    '.c': 'c',
-    '.cpp': 'cpp',
-    '.rs': 'rust',
-    '.go': 'go',
-    '.csv': 'csv',
-    '.cu': 'cuda',
-}
-
-inverse_kv_map = lambda d: {v: k for k, v in d.items()}
- 
 def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
     try:
         idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
@@ -200,49 +151,26 @@ def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
         idx = default
     if not -len(messages) <= idx < len(messages):
         raise IndexError("Index out of range. No operation will be performed.")
-    return idx  
+    return idx
 
-def export_messages(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    fmt = input("Enter export format (json, txt): ").lower() or "json"
-    output_path = path_input(f"exported_messages.{fmt}", os.getcwd())
-    with open(output_path, 'w') as file:
-        for message in messages:
-            if fmt == "json":
-                file.write(json.dumps(message, indent=4))
-            elif fmt == "txt":
-                file.write(f"role: {message['role']}\ncontent: {message['content']}\n\n")
-            elif fmt == "md":
-                print(f"md support coming soon via logcmd_llt_branch_1 (llt created branch for auto generated plugins)")
-                """ from logcmd_llt_branch_1 import export_messages_to_markdown
-                export_messages_to_markdown(messages, args) """
-            else:   
-                print("Invalid export format. Please choose from json, txt, or md.")
-            
-    print(f"Messages exported to text file at {output_path}")
+# Miscellaneous utilities
+language_extension_map = {
+    '.py': 'python', '.sh': 'shell', '.md': 'markdown', '.html': 'html',
+    '.css': 'css', '.js': 'javascript', '.ts': 'typescript', '.json': 'json',
+    '.yaml': 'yaml', '.c': 'c', '.cpp': 'cpp', '.rs': 'rust', '.go': 'go',
+    '.csv': 'csv', '.cu': 'cuda',
+}
 
-def update_config(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    for arg in vars(args):
-        print(f"{arg}: {getattr(args, arg)}")
+def inverse_kv_map(d):
+    return {v: k for k, v in d.items()}
+
+def is_base64(text):
     try:
-        key = input("Enter the name of the config option to update: ")
-        if not hasattr(args, key):
-            print(f"Config {key} does not exist.")
-            return messages
-        current_value = getattr(args, key)
-        new_value = input(f"Current value for {key}: {current_value}\nEnter new value for {key} (or 'exit' to cancel): ")
-        if new_value.lower() == 'exit' or not new_value: return messages
-        if isinstance(current_value, int):
-            casted_value = int(new_value)
-        elif isinstance(current_value, float):
-            casted_value = float(new_value)
-        elif isinstance(current_value, str):
-            casted_value = str(new_value)
-        else:
-            casted_value = new_value
-        setattr(args, key, casted_value)
-        print(f"Config updated: {key} = {casted_value}")
-    except ValueError as e:
-        print(f"Invalid value provided. Error: {e}")
+        base64.b64decode(text)
+        return True
     except Exception as e:
-        print(f"An error occurred while updating the configuration. Error: {e}")
-    return messages
+        print(f"Error decoding base64: {e}")
+        return False
+
+def quit_program(messages: List, args: Dict) -> None:
+    sys.exit(0)
