@@ -113,7 +113,7 @@ def file(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
         with open(file_path, "r") as file:
             data = file.read()
         if ext.lower() in language_extension_map:
-            data = f"```{language_extension_map[ext.lower()]}\n{data}\n```"
+            data = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{data}\n```"
         messages.append({"role": args.role, "content": data})
 
     setattr(args, "file", None)

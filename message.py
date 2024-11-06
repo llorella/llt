@@ -1,7 +1,9 @@
+# message.py
+
 import os
 import json
 from typing import Optional, Dict, List
-from utils import content_input, path_input, colors, get_valid_index, list_input
+from utils import content_input, path_input, Colors, get_valid_index, list_input
 
 
 class Message(Dict):
@@ -11,56 +13,89 @@ class Message(Dict):
 
 def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
     """
+    Load conversation history from a JSON file.
+
     args.load: "Conversation history file. JSON formatted list of natural language messages."
     """
     ll_path = (
         path_input(args.load, args.ll_dir)
-        if not args.load
+        if not getattr(args, "load", None)
         else os.path.join(args.ll_dir, args.load)
     )
     if os.path.isdir(ll_path):
         ll_path = os.path.join(ll_path, "default.ll")
     if not os.path.exists(ll_path):
         os.makedirs(os.path.dirname(ll_path), exist_ok=True)
+        Colors.print_colored(
+            f"No existing conversation found at '{ll_path}'. Starting fresh.",
+            Colors.YELLOW,
+        )
         return messages
     with open(ll_path, "r") as file:
         ll = json.load(file)
-        idx = get_valid_index(messages, "load from", 0) if not args.load else 0
+        idx = (
+            get_valid_index(messages, "load from", 0)
+            if not getattr(args, "load", None)
+            else 0
+        )
         if idx == -1:
             messages.extend(ll)
+            Colors.print_colored(
+                f"Appended {len(ll)} messages from '{ll_path}'.", Colors.GREEN
+            )
         elif not idx:
             messages = ll
+            Colors.print_colored(
+                f"Loaded {len(ll)} messages from '{ll_path}'.", Colors.GREEN
+            )
         args.load = ll_path
     return messages
 
 
 def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+    """
+    Write the current messages to a JSON file.
+
+    args.load: Path to the conversation history file.
+    args.non_interactive: If True, use the provided load path without prompting.
+    """
     ll_path = (
         path_input(args.load, args.ll_dir)
-        if not args.non_interactive
+        if not getattr(args, "non_interactive", False)
         else os.path.join(args.ll_dir, args.load)
     )
     os.makedirs(os.path.dirname(ll_path), exist_ok=True)
     with open(ll_path, "w") as file:
         json.dump(messages, file, indent=2)
+    Colors.print_colored(
+        f"Saved {len(messages)} messages to '{ll_path}'.", Colors.GREEN
+    )
     return messages
 
 
 def prompt(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+    """
+    Append a new prompt message to the conversation.
+    """
     message = Message(role=args.role, content=args.prompt)
     messages.append(message)
+    Colors.print_colored("Added new prompt message.", Colors.GREEN)
     return messages
 
 
 def remove(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
+    """
+    Remove a message at a specified index.
+    """
     message_index = (
         get_valid_index(messages, "remove", index)
-        if not args.remove
+        if not getattr(args, "remove", None)
         else int(args.remove)
     )
-    messages.pop(message_index)
+    removed_message = messages.pop(message_index)
+    Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
     setattr(args, "remove", None)
     return messages
 
@@ -68,24 +103,27 @@ def remove(
 def detach(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
+    """
+    Detach (extract) a message from the conversation.
+    """
     message_index = get_valid_index(messages, "detach", index)
-    return [messages.pop(message_index)]
+    detached_message = messages.pop(message_index)
+    Colors.print_colored(
+        f"Detached message at index {message_index + 1}.", Colors.GREEN
+    )
+    return [detached_message]
 
 
 def fold(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-
-    # just fold until the most recent non current role message
+    """
+    Fold consecutive messages from the same role into a single message.
+    """
+    initial_length = len(messages)
     while len(messages) > 1 and messages[-2]["role"] == args.role:
         messages[-2]["content"] += "\n" + messages[-1]["content"]
         messages.pop()
-    """index = (
-        input("Enter number of messages to fold: (default is 1): ") or 1
-        if not args.fold
-        else int(args.fold)
-    )
-    for i in range(int(index)):
-        messages[-2]["content"] += "\n" + messages[-1]["content"]
-        messages.pop()"""
+    folded_messages = initial_length - len(messages)
+    Colors.print_colored(f"Folded {folded_messages} message(s).", Colors.GREEN)
     setattr(args, "fold", None)
     return messages
 
@@ -93,32 +131,46 @@ def fold(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
 def insert(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
+    """
+    Insert a new message at a specified index.
+    """
     message_index = get_valid_index(messages, "insert", index)
-    messages.insert(message_index, Message(role=args.role, content=args.prompt))
+    new_message = Message(role=args.role, content=args.prompt)
+    messages.insert(message_index, new_message)
+    Colors.print_colored(
+        f"Inserted new message at index {message_index + 1}.", Colors.GREEN
+    )
     return messages
 
 
 def content(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
-    from utils import content_input
-
+    """
+    Modify the content of an existing message.
+    """
     index = get_valid_index(messages, "modify content of", index)
-    messages[index]["content"] = content_input()
+    new_content = content_input()
+    messages[index]["content"] = new_content
+    Colors.print_colored(
+        f"Modified content of message at index {index + 1}.", Colors.GREEN
+    )
     return messages
 
 
 def role(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
-    """if not messages:
-    # on startup,
-    # add string descriptions
-    messages.append(Message(role=args.role, content=args.prompt))
-    return messages"""
+    """
+    Modify the role of an existing message.
+    """
     index = get_valid_index(messages, "modify role of", index)
-    messages[index]["role"] = list_input(
-        ["user", "assistant", "system", "tool"], "Select role"
+    new_role = list_input(
+        ["user", "assistant", "system", "tool"], "Select new role for the message"
+    )
+    messages[index]["role"] = new_role
+    Colors.print_colored(
+        f"Modified role of message at index {index + 1} to '{new_role}'.", Colors.GREEN
     )
     return messages
 
@@ -126,35 +178,54 @@ def role(
 def view(
     messages: List[Message], args: Optional[Dict] = None, index: int = 0
 ) -> List[Message]:
+    """
+    View all messages in the conversation with styled formatting.
+    """
     if not messages:
+        Colors.print_colored("No messages to display.", Colors.YELLOW)
         return messages
 
-    def view_helper(message: Message, idx: int) -> str:
-        role, content = message["role"], message["content"]
-        print_content = ""
+    def view_helper(message: Message, idx: int) -> None:
+        role = message["role"]
+        content = message["content"]
+        color = {
+            "user": Colors.GREEN,
+            "assistant": Colors.MAGENTA,
+            "system": Colors.BLUE,
+            "tool": Colors.CYAN,
+        }.get(role, Colors.WHITE)
+
+        header = f"{color}[{role.capitalize()}]{Colors.RESET}"
+        footer = f"{color}[/{role.capitalize()}]{Colors.RESET}"
+        Colors.print_colored(header, color)
+
         if isinstance(content, list):
             for item in content:
                 if item["type"] == "text":
-                    print_content += item["text"] + "\n"
+                    print(item["text"])
                 elif item["type"] == "image_url":
-                    print_content += f"Image path: {item['image_url']['url']}"
+                    Colors.print_colored(
+                        f"Image path: {item['image_url']['url']}", Colors.CYAN
+                    )
         else:
-            print_content = content
-        color = colors.get(role, colors["reset"])
-        print(f"{color}[{role.capitalize()}]{colors['reset']}")
-        # for line in content.split('\\n'): print(line)
-        print(print_content)
-        print(f"{color}[/{role.capitalize()}]{colors['reset']}")
-        print(f"\nMessage {idx} of {len(messages)}")
+            print(content)
 
-    for i in range(0, len(messages)):
-        view_helper(messages[i], i + 1)
-    print(f"\nTotal messages shown: {len(messages)}")
+        Colors.print_colored(footer, color)
+        Colors.print_colored(f"Message {idx} of {len(messages)}", Colors.YELLOW)
+
+    for i, msg in enumerate(messages, 1):
+        view_helper(msg, i)
+        print("-" * 50)  # Separator between messages
+    Colors.print_colored(f"Total messages shown: {len(messages)}", Colors.YELLOW)
     return messages
 
 
 def cut(messages: List[str], args: Optional[Dict] = None) -> List[str]:
+    """
+    Cut a range of messages from the conversation.
+    """
     if not messages:
+        Colors.print_colored("No messages to cut.", Colors.YELLOW)
         return messages
     try:
         values = input(
@@ -163,20 +234,25 @@ def cut(messages: List[str], args: Optional[Dict] = None) -> List[str]:
         start = max(0, int(values[0]) - 1)
         end = int(values[1]) if len(values) > 1 else start + 1
     except (ValueError, IndexError):
-        print("Invalid input. Please enter numbers in the correct format.")
-        return messages
-    if start >= len(messages) or end > len(messages) or start >= end:
-        print(
-            "Invalid range. Make sure start is less than end and within the message list."
+        Colors.print_colored(
+            "Invalid input. Please enter numbers in the correct format.", Colors.RED
         )
         return messages
-    if (
+    if start >= len(messages) or end > len(messages) or start >= end:
+        Colors.print_colored(
+            "Invalid range. Make sure start is less than end and within the message list.",
+            Colors.RED,
+        )
+        return messages
+    confirmation = (
         input(
             f"Cutting messages from position {start + 1} to {end}. Proceed? (y for yes, any other key to cancel): "
         )
         .strip()
         .lower()
-        != "y"
-    ):
+    )
+    if confirmation != "y":
+        Colors.print_colored("Cut operation canceled.", Colors.YELLOW)
         return messages
+    Colors.print_colored(f"Cutting messages from {start + 1} to {end}.", Colors.GREEN)
     return messages[start:end]

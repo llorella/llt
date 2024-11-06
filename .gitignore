@@ -6,6 +6,8 @@
 !main.py
 !plugins.py
 !plugins/completion.py
+!plugins/format.py
+!plugins/desktop.py
 !editor.py
 !message.py
 !utils.py
@@ -14,3 +16,5 @@
 !README.md
 !LICENSE
 !requirements.txt
+!plugins/embeddings.py
+!embedding_utils

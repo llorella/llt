@@ -11,48 +11,55 @@ from io import BytesIO
 import pprint
 from typing import List, Dict
 
-colors = {
-    "system": "\033[34m",  # blue
-    "user": "\033[32m",  # green
-    "assistant": "\033[35m",  # magenta
-    "reset": "\033[0m",
-}
 
-
+# ANSI escape codes for colors and styles
 class Colors:
+    BLUE = "\033[34m"
+    GREEN = "\033[32m"
+    MAGENTA = "\033[35m"
     YELLOW = "\033[93m"
     WHITE = "\033[97m"
+    RED = "\033[31m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
     RESET = "\033[0m"
+    CYAN = "\033[36m"
+    LIGHT_BLUE = "\033[94m"
+    LIGHT_GREEN = "\033[92m"
 
     @staticmethod
-    def print_colored(text, color):
-        print(color + text + Colors.RESET)
+    def print_colored(text: str, color: str = "") -> None:
+        """Print text with the specified ANSI color."""
+        print(f"{color}{text}{Colors.RESET}")
 
     @staticmethod
-    def pretty_print_dict(message: Dict):
+    def print_bold(text: str, color: str = "") -> None:
+        """Print bold text with the specified ANSI color."""
+        print(f"{Colors.BOLD}{color}{text}{Colors.RESET}")
+
+    @staticmethod
+    def print_header() -> None:
+        """Print a stylized header."""
+        header = (
+            f"{Colors.YELLOW}{Colors.BOLD}"
+            "*********************************************************\n"
+            "*********************************************************\n"
+            "***** Welcome to llt, the little language terminal. *****\n"
+            "*********************************************************\n"
+            "*********************************************************\n"
+            f"{Colors.RESET}"
+        )
+        print(header)
+
+    @staticmethod
+    def pretty_print_dict(message: Dict) -> None:
+        """Pretty-print a dictionary with indentation."""
         formatted_message = pprint.pformat(message, indent=4)
         Colors.print_colored(formatted_message, Colors.WHITE)
 
-    @staticmethod
-    def print_header():
-        Colors.print_colored(
-            "*********************************************************", Colors.YELLOW
-        )
-        Colors.print_colored(
-            "*********************************************************", Colors.YELLOW
-        )
-        Colors.print_colored(
-            "***** Welcome to llt, the little language terminal. *****", Colors.WHITE
-        )
-        Colors.print_colored(
-            "*********************************************************", Colors.YELLOW
-        )
-        Colors.print_colored(
-            "*********************************************************\n", Colors.YELLOW
-        )
-
 
 def path_completer(text, state):
+    """Autocomplete file and directory paths."""
     # Expand user home directory shortcut
     text = os.path.expanduser(text)
     # If text is a directory, list its contents
@@ -85,7 +92,7 @@ def path_completer(text, state):
 
 
 def path_input(default_file: str = None, root_dir: str = None) -> str:
-
+    """Prompt the user to input a file or directory path with autocomplete."""
     readline.set_completer_delims(" \t\n;")
     if "libedit" in readline.__doc__:
         readline.parse_and_bind("bind ^I rl_complete")
@@ -97,10 +104,10 @@ def path_input(default_file: str = None, root_dir: str = None) -> str:
             full_text = os.path.join(root_dir, text)
         else:
             full_text = text
-        # we need to adjust the returned value to remove root_dir
+        # Adjust the returned value to remove root_dir
         completion = path_completer(full_text, state)
         if completion:
-            # remove root_dir from the beginning if present
+            # Remove root_dir from the beginning if present
             if root_dir and completion.startswith(root_dir):
                 completion = os.path.relpath(completion, root_dir)
             return completion
@@ -109,9 +116,10 @@ def path_input(default_file: str = None, root_dir: str = None) -> str:
 
     readline.set_completer(completer)
     try:
-        file_path = input(
-            f"Enter {'file' if root_dir else 'directory'} path (default is {default_file}): "
-        )
+        prompt_text = f"Enter {'file' if root_dir else 'directory'} path"
+        if default_file:
+            prompt_text += f" (default: {default_file})"
+        file_path = input(f"{Colors.BOLD}{Colors.BLUE}{prompt_text}{Colors.RESET}: ")
     finally:
         readline.set_completer(None)
     if root_dir:
@@ -125,6 +133,8 @@ def path_input(default_file: str = None, root_dir: str = None) -> str:
 
 
 def list_completer(values):
+    """Create a completer function for a list of values."""
+
     def completer(text, state):
         matches = [value for value in values if value.startswith(text)]
         try:
@@ -136,6 +146,7 @@ def list_completer(values):
 
 
 def list_input(values: List[str], input_string: str = "Enter a value from list") -> str:
+    """Prompt the user to select a value from a list with autocomplete."""
     readline.set_completer_delims(" \t\n;")
     if "libedit" in readline.__doc__:
         readline.parse_and_bind("bind ^I rl_complete")
@@ -143,34 +154,40 @@ def list_input(values: List[str], input_string: str = "Enter a value from list")
         readline.parse_and_bind("tab: complete")
     readline.set_completer(list_completer(values))
     try:
-        return input(input_string + " (tab to autocomplete): ")
+        return input(
+            f"{Colors.BOLD}{Colors.BLUE}{input_string} (tab to autocomplete): {Colors.RESET}"
+        )
     finally:
         readline.set_completer(None)
 
 
 def content_input() -> str:
-    print("Enter content below.")
-    Colors.print_colored(
-        "*********************************************************", Colors.YELLOW
-    )
-    content = input("> ") or ""
-    Colors.print_colored(
-        "\n*********************************************************\n", Colors.YELLOW
-    )
+    """Prompt the user to enter content with clear separators."""
+    print(f"{Colors.BOLD}{Colors.CYAN}Enter content below.{Colors.RESET}")
+    separator = "*" * 57
+    print(f"{Colors.YELLOW}{separator}{Colors.RESET}")
+    content = input(f"{Colors.BOLD}>{Colors.RESET} ") or ""
+    print(f"{Colors.YELLOW}{separator}\n{Colors.RESET}")
     return content
 
 
 def llt_input(plugin_keys: List[str]) -> str:
+    """Main input prompt for the llt shell with autocomplete for plugin commands."""
     readline.set_completer_delims(" \t\n;")
     if "libedit" in readline.__doc__:
         readline.parse_and_bind("bind ^I rl_complete")
     else:
         readline.parse_and_bind("tab: complete")
     readline.set_completer(list_completer(plugin_keys))
-    return input("llt> ")
+    try:
+        return input(f"{Colors.BOLD}{Colors.GREEN}llt> {Colors.RESET}")
+    finally:
+        readline.set_completer(None)
 
 
 def count_image_tokens(file_path: str) -> int:
+    """Count tokens in an image based on its dimensions."""
+
     def resize(width, height):
         if width > 1024 or height > 1024:
             if width > height:
@@ -181,7 +198,7 @@ def count_image_tokens(file_path: str) -> int:
                 height = 1024
         return width, height
 
-    def count_image_tokens(width: int, height: int):
+    def count_image_tokens_resized(width: int, height: int):
         width, height = resize(width, height)
         h = ceil(height / 512)
         w = ceil(width / 512)
@@ -190,29 +207,34 @@ def count_image_tokens(file_path: str) -> int:
 
     with Image.open(file_path) as image:
         width, height = image.size
-        return count_image_tokens(width, height)
+        return count_image_tokens_resized(width, height)
 
 
 def encode_image(image_path: str) -> str:
+    """Encode an image to a base64 string."""
     with open(image_path, "rb") as image_file:
         return base64.b64encode(image_file.read()).decode("utf-8")
 
 
-def encoded_img_to_pil_img(data_str):
+def encoded_img_to_pil_img(data_str: str):
+    """Convert a base64 string back to a PIL Image."""
     base64_str = data_str.replace("data:image/png;base64,", "")
     image_data = base64.b64decode(base64_str)
     return Image.open(BytesIO(image_data))
 
 
-def save_to_tmp_img_file(data_str):
+def save_to_tmp_img_file(data_str: str) -> str:
+    """Save a base64-encoded image string to a temporary file."""
     image = encoded_img_to_pil_img(data_str)
-    tmp_img_path = os.path.join(tempfile.mkdtemp(), "tmp_img.png")
+    tmp_dir = tempfile.mkdtemp()
+    tmp_img_path = os.path.join(tmp_dir, "tmp_img.png")
     image.save(tmp_img_path)
     return tmp_img_path
 
 
 # Message utilities
 def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
+    """Calculate the number of tokens in the messages."""
     num_tokens, content = 0, ""
     for msg in messages:
         msg_content = msg["content"]
@@ -226,11 +248,12 @@ def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
             content += msg_content
     encoding = tiktoken.encoding_for_model("gpt-4")
     num_tokens += 4 + len(encoding.encode(content))
-    print(f"Tokens: {num_tokens}")
+    print(f"{Colors.BOLD}{Colors.BLUE}Tokens:{Colors.RESET} {num_tokens}")
     return num_tokens
 
 
-def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
+def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1) -> int:
+    """Prompt the user to enter a valid index for a message."""
     try:
         idx = (
             input(
@@ -269,18 +292,22 @@ language_extension_map = {
 }
 
 
-def inverse_kv_map(d):
+def inverse_kv_map(d: Dict) -> Dict:
+    """Invert a key-value mapping."""
     return {v: k for k, v in d.items()}
 
 
-def is_base64(text):
+def is_base64(text: str) -> bool:
+    """Check if a string is base64-encoded."""
     try:
         base64.b64decode(text)
         return True
     except Exception as e:
-        print(f"Error decoding base64: {e}")
+        Colors.print_colored(f"Error decoding base64: {e}", Colors.RED)
         return False
 
 
 def quit_program(messages: List, args: Dict) -> None:
+    """Exit the program gracefully."""
+    Colors.print_colored("Exiting llt. Goodbye!", Colors.RED)
     sys.exit(0)
