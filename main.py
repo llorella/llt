@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+
 import os
 import json
 import argparse
@@ -6,6 +7,7 @@ import importlib.util
 from typing import List, Dict, Callable
 import traceback
 import argcomplete
+import time  # Added for timing
 
 from utils import Colors, llt_input
 from plugins import plugins
@@ -13,8 +15,9 @@ from logger import llt_logger
 
 def load_plugins(plugin_dir: str) -> None:
     """Dynamically load llt plugins from scripts in the specified directory."""
+    Colors.print_bold(f"Loading plugins from directory: {plugin_dir}", Colors.BLUE)
     for filename in os.listdir(plugin_dir):
-        if filename.endswith('.py') and not filename.startswith('__'):
+        if filename.endswith(".py") and not filename.startswith("__"):
             file_path = os.path.join(plugin_dir, filename)
             module_name = filename[:-3]
             spec = importlib.util.spec_from_file_location(module_name, file_path)
@@ -26,13 +29,14 @@ def load_plugins(plugin_dir: str) -> None:
                 llt_logger.log_error(f"Failed to import {module_name}", {"error": str(e)})
 
 def parse_arguments() -> argparse.Namespace:
+    """Parse command-line arguments with dynamic plugin flags."""
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
-    def get_ll_files(prefix: str, parsed_args: argparse.Namespace, **kwargs) -> List[str]:
-        ll_dir = parsed_args.ll_dir if hasattr(parsed_args, 'll_dir') else os.path.join(os.getenv('LLT_PATH', ''), 'll')
-        return [f for f in os.listdir(ll_dir) if f.startswith(prefix)]
+    for plugin in plugins.keys():
+        if plugin not in ["help", "quit"]:  # these are already added
+            parser.add_argument(f"--{plugin}", type=str, help=f"Run {plugin} plugin.")
 
-    parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation history file. JSON formatted list of natural language messages.", default="").completer = get_ll_files
+    parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation history file. JSON formatted list of natural language messages.", default="")
     parser.add_argument('-f', '--file', type=str, help="Source files to include in the current session.", default="")
     parser.add_argument('-p', '--prompt', type=str, help="Prompt string.", default="")
     parser.add_argument('-r', '--role', type=str, help="Specify role.", default="user")
@@ -59,21 +63,35 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--xml', type=str, help="The xml tag to wrap in.", default=None)
 
     argcomplete.autocomplete(parser)
-    return parser.parse_args()
+    args = parser.parse_args()
+    return args
 
 def init_directories(args: argparse.Namespace) -> None:
+    """Initialize necessary directories."""
+    if args.exec_dir == ".":
+        args.exec_dir = os.path.join(os.getcwd())
     for directory in [args.ll_dir, args.exec_dir, args.cmd_dir]:
         os.makedirs(directory, exist_ok=True)
 
 def llt_shell_log(cmd: str) -> None:
-    file_path = os.path.join(os.getenv('LLT_PATH', ''), 'llt_shell.log')
-    with open(file_path, 'a') as logfile:
-        logfile.write(f"llt> {cmd}\n")
+    """Log shell commands to a log file."""
+    file_path = os.path.join(os.getenv("LLT_PATH", ""), "llt_shell.log")
+    try:
+        with open(file_path, "a") as logfile:
+            logfile.write(f"llt> {cmd}\n")
 
-n_abbv = lambda s, n=1: s[:n].lower() 
+    except Exception as e:
+        Colors.print_colored(f"Failed to log shell command '{cmd}': {e}", Colors.RED)
 
-def init_cmd_map()-> Dict[str, Callable]:
+
+n_abbv = lambda s, n=1: s[:n].lower()
+
+
+def init_cmd_map() -> Dict[str, Callable]:
+    """Initialize a command map with plugin commands and their abbreviations."""
     command_map = {}
+    plugin_keys = ", ".join(plugins.keys())
+    Colors.print_colored(f"{f'Available plugins'}: {plugin_keys}", Colors.LIGHT_GREEN)
     for cmd, function in plugins.items():
         if cmd not in command_map:
             command_map[cmd] = function
@@ -84,13 +102,35 @@ def init_cmd_map()-> Dict[str, Callable]:
         seps = ["-", "_"]
         for sep in seps:
             split_cmd = cmd.split(sep)
-            if split_cmd: command_map[split_cmd[0]] = function
+            if split_cmd:
+                command_map[split_cmd[0]] = function
     return command_map
 
+
 def user_greeting(username: str, args: argparse.Namespace) -> str:
-    return f"Hello {username}! Using ll file {args.load}, with model {args.model} at temperature {args.temperature}. Type 'help' for commands."
+    """Generate a greeting message for the user."""
+    load_file = getattr(args, "load", "None")
+    greeting = (
+        f"Hello {username}! Using ll file {load_file}, "
+        f"with model {args.model} at temperature {args.temperature}. "
+        f"Type 'help' for commands."
+    )
+    return greeting
+
+
+def display_greeting(username: str, args: argparse.Namespace) -> None:
+    """Display the user greeting in a stylized format."""
+    greeting_text = user_greeting(username, args)
+    header = (
+        f"{Colors.BOLD}{Colors.WHITE}{'='*len(greeting_text)}\n"
+        f"{greeting_text}\n"
+        f"{'='*len(greeting_text)}{Colors.RESET}"
+    )
+    print(header)
+
 
 def llt() -> None:
+    """Main function to run the llt shell."""
     args = parse_arguments()
     init_directories(args)
     messages = []
@@ -105,6 +145,7 @@ def llt() -> None:
     llt_logger.log_info("LLT session started", {"model": args.model, "temperature": args.temperature})
     print(user_greeting(os.getenv('USER', 'User'), args))
 
+    # Main interactive loop
     while True:
         try:
             (cmd, index) = llt_input(list(cmds.keys()))
@@ -125,6 +166,6 @@ def llt() -> None:
             print(f"An error occurred: {e}\n{traceback.format_exc()}")
 
 if __name__ == "__main__":
-    plugin_dir = os.path.join(os.getenv('LLT_DIR', ''), 'plugins')
+    plugin_dir = os.path.join(os.getenv("LLT_DIR", ""), "plugins")
     load_plugins(plugin_dir)
     llt()

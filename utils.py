@@ -17,17 +17,49 @@ colors = {
     'reset': '\033[0m'
 }
 
+
+# ANSI escape codes for colors and styles
 class Colors:
-    YELLOW = '\033[93m'
-    WHITE = '\033[97m'
-    RESET = '\033[0m'
+    BLUE = "\033[34m"
+    GREEN = "\033[32m"
+    MAGENTA = "\033[35m"
+    YELLOW = "\033[93m"
+    WHITE = "\033[97m"
+    RED = "\033[31m"
+    BOLD = "\033[1m"
+    UNDERLINE = "\033[4m"
+    RESET = "\033[0m"
+    CYAN = "\033[36m"
+    LIGHT_BLUE = "\033[94m"
+    LIGHT_GREEN = "\033[92m"
 
     @staticmethod
-    def print_colored(text, color):
-        print(color + text + Colors.RESET)
+    def print_colored(text: str, color: str = "") -> None:
+        """Print text with the specified ANSI color."""
+        print(f"{color}{text}{Colors.RESET}")
 
     @staticmethod
-    def pretty_print_dict(message: Dict):
+    def print_bold(text: str, color: str = "") -> None:
+        """Print bold text with the specified ANSI color."""
+        print(f"{Colors.BOLD}{color}{text}{Colors.RESET}")
+
+    @staticmethod
+    def print_header() -> None:
+        """Print a stylized header."""
+        header = (
+            f"{Colors.YELLOW}{Colors.BOLD}"
+            "*********************************************************\n"
+            "*********************************************************\n"
+            "***** Welcome to llt, the little language terminal. *****\n"
+            "*********************************************************\n"
+            "*********************************************************\n"
+            f"{Colors.RESET}"
+        )
+        print(header)
+
+    @staticmethod
+    def pretty_print_dict(message: Dict) -> None:
+        """Pretty-print a dictionary with indentation."""
         formatted_message = pprint.pformat(message, indent=4)
         Colors.print_colored(formatted_message, Colors.WHITE)
 
@@ -174,6 +206,8 @@ def llt_input(plugin_keys: List[str]) -> Tuple[str, int]:
 
 
 def count_image_tokens(file_path: str) -> int:
+    """Count tokens in an image based on its dimensions."""
+
     def resize(width, height):
         if width > 1024 or height > 1024:
             if width > height:
@@ -183,55 +217,71 @@ def count_image_tokens(file_path: str) -> int:
                 width = int(width * 1024 / height)
                 height = 1024
         return width, height
-    
-    def count_image_tokens(width: int, height: int):
+
+    def count_image_tokens_resized(width: int, height: int):
         width, height = resize(width, height)
         h = ceil(height / 512)
         w = ceil(width / 512)
         total = 85 + 170 * h * w
         return total
-    
+
     with Image.open(file_path) as image:
         width, height = image.size
-        return count_image_tokens(width, height)
+        return count_image_tokens_resized(width, height)
+
 
 def encode_image(image_path: str) -> str:
+    """Encode an image to a base64 string."""
     with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode('utf-8')
+        return base64.b64encode(image_file.read()).decode("utf-8")
 
-def encoded_img_to_pil_img(data_str):
+
+def encoded_img_to_pil_img(data_str: str):
+    """Convert a base64 string back to a PIL Image."""
     base64_str = data_str.replace("data:image/png;base64,", "")
     image_data = base64.b64decode(base64_str)
     return Image.open(BytesIO(image_data))
 
-def save_to_tmp_img_file(data_str):
+
+def save_to_tmp_img_file(data_str: str) -> str:
+    """Save a base64-encoded image string to a temporary file."""
     image = encoded_img_to_pil_img(data_str)
-    tmp_img_path = os.path.join(tempfile.mkdtemp(), "tmp_img.png")
+    tmp_dir = tempfile.mkdtemp()
+    tmp_img_path = os.path.join(tmp_dir, "tmp_img.png")
     image.save(tmp_img_path)
     return tmp_img_path
+
 
 # Message utilities
 def tokenize(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> int:
     num_tokens, content = 0, ""
     for msg in messages:
-        msg_content = msg['content']
+        msg_content = msg["content"]
         if isinstance(msg_content, list):
             for item in msg_content:
-                if item['type'] == 'text':
-                    content += item['text']
+                if item["type"] == "text":
+                    content += item["text"]
                 # elif item['type'] == 'image_url':
                 #     num_tokens += count_image_tokens(item['image_url']['url'])
         else:
             content += msg_content
     encoding = tiktoken.encoding_for_model("gpt-4")
     num_tokens += 4 + len(encoding.encode(content))
-    print(f"Tokens: {num_tokens}")
+    print(f"{Colors.BOLD}{Colors.BLUE}Tokens:{Colors.RESET} {num_tokens}")
     return num_tokens
 
-def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
+
+def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1) -> int:
+    """Prompt the user to enter a valid index for a message."""
     try:
-        idx = input(f"Enter index of message to {prompt} (default is {'all' if not default else default}): ") or default
-        if not idx: return default
+        idx = (
+            input(
+                f"Enter index of message to {prompt} (default is {'all' if not default else default}): "
+            )
+            or default
+        )
+        if not idx:
+            return default
         idx = int(idx) % len(messages)  # support negative indexing
     except ValueError:
         print("Invalid input. Using default.")
@@ -240,23 +290,39 @@ def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1):
         raise IndexError("Index out of range. No operation will be performed.")
     return idx
 
+
 # Miscellaneous utilities
 language_extension_map = {
-    '.py': 'python', '.sh': 'shell', '.md': 'markdown', '.html': 'html',
-    '.css': 'css', '.js': 'javascript', '.ts': 'typescript', '.json': 'json',
-    '.yaml': 'yaml', '.c': 'c', '.cpp': 'cpp', '.rs': 'rust', '.go': 'go',
-    '.csv': 'csv', '.cu': 'cuda',
+    ".py": "python",
+    ".sh": "shell",
+    ".md": "markdown",
+    ".html": "html",
+    ".css": "css",
+    ".js": "javascript",
+    ".ts": "typescript",
+    ".json": "json",
+    ".yaml": "yaml",
+    ".c": "c",
+    ".cpp": "cpp",
+    ".rs": "rust",
+    ".go": "go",
+    ".csv": "csv",
+    ".cu": "cuda",
 }
 
-def inverse_kv_map(d):
+
+def inverse_kv_map(d: Dict) -> Dict:
+    """Invert a key-value mapping."""
     return {v: k for k, v in d.items()}
 
-def is_base64(text):
+
+def is_base64(text: str) -> bool:
+    """Check if a string is base64-encoded."""
     try:
         base64.b64decode(text)
         return True
     except Exception as e:
-        print(f"Error decoding base64: {e}")
+        Colors.print_colored(f"Error decoding base64: {e}", Colors.RED)
         return False
 
 def quit_program(messages: List, args: Dict, index: int = -1) -> None:

@@ -12,6 +12,9 @@
 !web.py
 !gmail.py
 !plugins/embeddings.py
+!plugins/text_editor.py
 !README.md
 !LICENSE
 !requirements.txt
+!plugins/embeddings.py
+!embedding_utils
