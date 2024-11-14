@@ -9,7 +9,7 @@ from math import ceil
 import tempfile
 from io import BytesIO
 import pprint
-from typing import List, Dict
+from typing import List, Dict, Tuple
 colors = {  
     'system': '\033[34m',    # blue
     'user': '\033[32m',      # green
@@ -39,32 +39,106 @@ class Colors:
         Colors.print_colored("*********************************************************", Colors.YELLOW)
         Colors.print_colored("*********************************************************\n", Colors.YELLOW)
 
-def directory_completer(dir_path):
-    def completer(text, state):
-        files = os.listdir(dir_path)
-        matches = [file for file in files if file.startswith(text)]
-        return matches[state] if state < len(matches) else None
-    return completer
-
 def path_completer(text, state):
-    readline.get_line_buffer().split()
-    if '~' in text:
-        text = os.path.expanduser('~') + text[1:]
-    if os.path.isdir(text) and not text.endswith(os.path.sep):
-        return [text + os.path.sep][state]
-    return [x for x in os.listdir(os.path.dirname(text)) if x.startswith(os.path.basename(text))][state]
+    """Autocomplete file and directory paths."""
+    # Expand user home directory shortcut
+    text = os.path.expanduser(text)
+    # If text is a directory, list its contents
+    if os.path.isdir(text):
+        entries = os.listdir(text)
+        entries = [
+            os.path.join(text, entry)
+            + ("/" if os.path.isdir(os.path.join(text, entry)) else "")
+            for entry in entries
+        ]
+    else:
+        # Get the directory and basename
+        dirname = os.path.dirname(text) or "."
+        basename = os.path.basename(text)
+        try:
+            entries = [
+                os.path.join(dirname, entry)
+                + ("/" if os.path.isdir(os.path.join(dirname, entry)) else "")
+                for entry in os.listdir(dirname)
+                if entry.startswith(basename)
+            ]
+        except FileNotFoundError:
+            entries = []
+    # Remove duplicates and sort
+    matches = sorted(set(entries))
+    try:
+        return matches[state]
+    except IndexError:
+        return None
+
+def path_input(default_file: str = None, root_dir: str = None) -> str:
+    """Prompt the user to input a file or directory path with autocomplete."""
+    readline.set_completer_delims(" \t\n;")
+    if "libedit" in readline.__doc__:
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
+
+    def completer(text, state):
+        if root_dir and not os.path.isabs(os.path.expanduser(text)):
+            full_text = os.path.join(root_dir, text)
+        else:
+            full_text = text
+        # Adjust the returned value to remove root_dir
+        completion = path_completer(full_text, state)
+        if completion:
+            # Remove root_dir from the beginning if present
+            if root_dir and completion.startswith(root_dir):
+                completion = os.path.relpath(completion, root_dir)
+            return completion
+        else:
+            return None
+
+    readline.set_completer(completer)
+    try:
+        prompt_text = f"Enter {'file' if root_dir else 'directory'} path"
+        if default_file:
+            prompt_text += f" (default: {default_file})"
+        file_path = input(f"{prompt_text}{Colors.RESET}: ")
+    finally:
+        readline.set_completer(None)
+    if root_dir:
+        return (
+            os.path.join(root_dir, os.path.expanduser(file_path))
+            if file_path
+            else default_file
+        )
+    else:
+        return os.path.expanduser(file_path) if file_path else default_file
+
 
 def list_completer(values):
+    """Create a completer function for a list of values."""
+
     def completer(text, state):
         matches = [value for value in values if value.startswith(text)]
-        return matches[state] if state < len(matches) else None
+        try:
+            return matches[state]
+        except IndexError:
+            return None
+
     return completer
 
+
 def list_input(values: List[str], input_string: str = "Enter a value from list") -> str:
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind("tab: complete")
+    """Prompt the user to select a value from a list with autocomplete."""
+    readline.set_completer_delims(" \t\n;")
+    if "libedit" in readline.__doc__:
+        readline.parse_and_bind("bind ^I rl_complete")
+    else:
+        readline.parse_and_bind("tab: complete")
     readline.set_completer(list_completer(values))
-    return input(input_string +  " (tab to autocomplete): ")
+    try:
+        return input(
+            f"{input_string} (tab to autocomplete): {Colors.RESET}"
+        )
+    finally:    
+        readline.set_completer(None)
 
 def content_input() -> str:
     print("Enter content below.")
@@ -73,18 +147,31 @@ def content_input() -> str:
     Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
     return content
 
-def path_input(default_file: str = None, root_dir: str = None) -> str:
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind("tab: complete")
-    readline.set_completer(directory_completer(root_dir) if root_dir else path_completer)
-    file_path = input(f"Enter file path (default is {default_file}): ")
-    return os.path.join(root_dir if root_dir else os.getcwd(), os.path.expanduser(file_path) if file_path else default_file)
-
-def llt_input(plugin_keys: List[str]) -> str:
+def llt_input(plugin_keys: List[str]) -> Tuple[str, int]:
     readline.set_completer_delims(' \t\n;')
     readline.parse_and_bind("tab: complete")
     readline.set_completer(list_completer(plugin_keys))
-    return input("llt> ")
+
+    raw_cmd = input("llt> ")
+    if raw_cmd and raw_cmd[:-1].isdigit() and raw_cmd[-1].isalpha():
+        # If command follows the pattern: number + letter (e.g., "2v")
+        index = int(raw_cmd[:-1])
+        cmd = raw_cmd[-1]
+    elif raw_cmd and raw_cmd[:1].isdigit() and raw_cmd[1] == '-' and raw_cmd[2:].isalpha():
+        # If command follows the pattern: -number + letter (e.g., "-2v") for last n items
+        index = -int(raw_cmd[1:-1])
+        cmd = raw_cmd[-1]
+    elif raw_cmd and raw_cmd[-1::].isdigit() and raw_cmd[:1].isalpha():
+        # If command follows the pattern: letter + number (e.g., "v2")
+        index = int(raw_cmd[-1:])
+        cmd = raw_cmd[:-1]
+    else:
+        cmd = raw_cmd  # Regular command without index
+        index = -1
+        
+    return cmd, index
+
+
 
 def count_image_tokens(file_path: str) -> int:
     def resize(width, height):
@@ -124,7 +211,7 @@ def save_to_tmp_img_file(data_str):
     return tmp_img_path
 
 # Message utilities
-def tokenize(messages: List[Dict[str, any]], args: Dict) -> int:
+def tokenize(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> int:
     num_tokens, content = 0, ""
     for msg in messages:
         msg_content = msg['content']
@@ -172,5 +259,5 @@ def is_base64(text):
         print(f"Error decoding base64: {e}")
         return False
 
-def quit_program(messages: List, args: Dict) -> None:
+def quit_program(messages: List, args: Dict, index: int = -1) -> None:
     sys.exit(0)

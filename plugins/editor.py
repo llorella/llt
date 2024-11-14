@@ -1,10 +1,11 @@
 # editor.py
 import os
 import re
-import json
+import base64
 import subprocess
 import pyperclip
 from typing import List, Dict
+
 from utils import (
     path_input, content_input, get_valid_index, 
     encode_image, language_extension_map, list_input
@@ -44,41 +45,85 @@ def extract_code_blocks(content: str) -> List[Dict]:
     return [{'language': language, 'code': code} for language, code in matches]
 
 @plugin
-def file_include(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    file_path = args.file if args.non_interactive else path_input("Enter file path: ", os.getcwd())
+def file_include(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
+    file_path = args.file if args.non_interactive else path_input(args.file, os.getcwd())
     
     if not os.path.exists(file_path):
         print(f"Error: File not found at {file_path}")
         return messages
-
     _, ext = os.path.splitext(file_path)
     if ext.lower() in IMAGE_EXTS:
         prompt = args.prompt if args.non_interactive else content_input()
-        messages.append({
-            'role': 'user',
-            'content': [
-                {'type': "text", 'text': prompt},
-                {"type": "image_url", "image_url": {"url": f"file://{os.path.abspath(file_path)}"}}
-            ]
-        })
+        if args.model.startswith("claude"):
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image",
+                            "source": {
+                                "type": "base64",
+                                "media_type": f"image/{os.path.splitext(file_path)[1][1:].lower()}",
+                                "data": f"file://{os.path.abspath(file_path)}",
+                            },
+                        },
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            )
+        elif args.model.startswith("gpt-4o"):
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": f"file://{os.path.abspath(file_path)}"
+                            },
+                        },
+                    ],
+                }
+            )
+        else:
+            print("Unsupported model.")
+            return messages
     else:
-        with open(file_path, 'r') as file:
+        with open(file_path, "r") as file:
             data = file.read()
-
-        messages.append({'role': 'user', 'content': data})
+        if ext.lower() in language_extension_map:
+            data = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{data}\n```"
+        messages.append({"role": args.role, "content": data})
+    setattr(args, 'file', None)
     return messages
 
 @plugin
-def encode_images(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+def encode_images(
+    messages: List[Dict[str, any]], args: Dict, index: int = -1
+) -> List[Dict[str, any]]:
     for idx in range(len(messages)):
-       message = messages[idx]
-       if isinstance(message['content'], list) and len(message['content']) == 2:
-           image_url = message['content'][1]['image_url']['url']
-           if image_url.startswith('file://'):
-               image_path = image_url[7:]
-               encoded_string = encode_image(image_path)
-               message['content'][1]['image_url']['url'] = f"data:image/{os.path.splitext(image_path)[1][1:]};base64,{encoded_string}"
-               print(f"Image at index {idx+1} has been base64 encoded.")
+        message = messages[idx]
+        if isinstance(message["content"], list) and len(message["content"]) == 2:
+            if args.model.startswith("claude"):
+                image_url = message["content"][0]["source"]["data"]
+                if image_url.startswith("file://"):
+                    image_path = image_url[7:]
+                    with open(image_path, "rb") as image_file:
+                        encoded_string = base64.b64encode(image_file.read()).decode(
+                            "utf-8"
+                        )
+                    message["content"][0]["source"]["data"] = encoded_string
+                    print(f"Image at index {idx+1} has been base64 encoded.")
+            else:
+                image_url = message["content"][1]["image_url"]["url"]
+                if image_url.startswith("file://"):
+                    image_path = image_url[7:]
+                    encoded_string = encode_image(image_path)
+                    message["content"][1]["image_url"][
+                        "url"
+                    ] = f"data:image/{os.path.splitext(image_path)[1][1:]};base64,{encoded_string}"
+                    print(f"Image at index {idx+1} has been base64 encoded.")
     return messages
 
 @plugin
@@ -115,13 +160,13 @@ def code_block(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> L
     return messages
 
 @plugin
-def paste(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+def paste(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
     paste = pyperclip.paste()
     messages.append({'role': 'user', 'content': paste})
     return messages
 
 @plugin
-def copy(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
+def copy(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
     pyperclip.copy(messages[-1]['content'])
     return messages
 
@@ -141,13 +186,19 @@ def content(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List
 
 @plugin
 def execute_command(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
-    message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
+    if args.execute:
+        message_index = index
+        args.execute = False
+        check = False
+    else:
+        message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
+        check = True
     code_blocks = extract_code_blocks(messages[message_index]['content'])
-    results = [run_code_block(code_block) for code_block in code_blocks]
+    results = [run_code_block(code_block, check) for code_block in code_blocks]
     messages.append({'role': 'user', 'content': '\n'.join(results)})
     return messages
 
-def run_code_block(code_block: Dict) -> str:
+def run_code_block(code_block: Dict, check: bool = True) -> str:
     language, code = code_block['language'], code_block['code']
     result = None
     args, shell = [], False
@@ -156,7 +207,7 @@ def run_code_block(code_block: Dict) -> str:
             args, shell = [code], True
         elif language == 'python':
             args = ['python3', '-c', code]
-        user_confirm = input(f"Code:\n{code}\nExecute (x) or skip (any) {language} block? ").lower()
+        user_confirm = input(f"Code:\n{code}\nExecute (x) or skip (any) {language} block? ").lower() if check else 'x'
         if user_confirm == 'x':
             result = subprocess.run(args, 
                                     shell=shell,
@@ -167,3 +218,24 @@ def run_code_block(code_block: Dict) -> str:
     except subprocess.CalledProcessError as e:
         result = f"Error executing command: {e}\nError details:\n{e.stderr}"
     return result.stdout
+
+
+@plugin
+def xml_wrap(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
+    if args.xml:
+        tag_name = args.xml
+        args.xml = None
+    else:
+        index = get_valid_index(messages, "wrap in xml", -1) if not args.non_interactive else -1
+        tag_name = content_input() if not args.non_interactive else args.prompt
+    if tag_name:
+        messages[index][
+            "content"
+        ] = f"<{tag_name}>\n{messages[index]['content']}\n</{tag_name}>"
+    return messages
+
+@plugin
+def strip_trailing_newline(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
+    index = get_valid_index(messages, "strip trailing newline", -1) if not args.non_interactive else -1
+    messages[index]["content"] = messages[index]["content"].rstrip("\n")
+    return messages

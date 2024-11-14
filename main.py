@@ -9,7 +9,7 @@ import argcomplete
 
 from utils import Colors, llt_input
 from plugins import plugins
-
+from logger import llt_logger
 
 def load_plugins(plugin_dir: str) -> None:
     """Dynamically load llt plugins from scripts in the specified directory."""
@@ -23,8 +23,7 @@ def load_plugins(plugin_dir: str) -> None:
                 if module:
                     spec.loader.exec_module(module)
             except ImportError as e:
-                print(f"Failed to import {module_name} due to {e}")
-
+                llt_logger.log_error(f"Failed to import {module_name}", {"error": str(e)})
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
@@ -34,41 +33,37 @@ def parse_arguments() -> argparse.Namespace:
         return [f for f in os.listdir(ll_dir) if f.startswith(prefix)]
 
     parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation history file. JSON formatted list of natural language messages.", default="").completer = get_ll_files
-    parser.add_argument('-f', '--file', type=str, help="Source file to include in the current session.", default="")
+    parser.add_argument('-f', '--file', type=str, help="Source files to include in the current session.", default="")
     parser.add_argument('-p', '--prompt', type=str, help="Prompt string.", default="")
     parser.add_argument('-r', '--role', type=str, help="Specify role.", default="user")
-    parser.add_argument('-m', '--model', type=str, help="Specify model.", default="gpt-4-turbo")
+    parser.add_argument('-m', '--model', type=str, help="Specify model.", default="gpt-4o-mini")
     parser.add_argument('-t', '--temperature', type=float, help="Specify temperature.", default=0.9)
     parser.add_argument('--max_tokens', type=int, help="Maximum number of tokens to generate.", default=4096)
     parser.add_argument('--logprobs', type=int, help="Include log probabilities in the output.", default=0)
     parser.add_argument('--top_p', type=float, help="Sample from top P tokens.", default=1.0)
     parser.add_argument('--cmd_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'cmd'))
     parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'exec'))
-    parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'll'))
+    parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'll/'))
     parser.add_argument('-n', '--non_interactive', action='store_true', help="Run in non-interactive mode.")
 
     # Plugin flags
     parser.add_argument('-c', '--complete', action='store_true', help="Complete the last message.")
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
+    parser.add_argument('--fold', action='store_true', help="Fold consecutive messages from the same role into a single message.")
     parser.add_argument('--execute', action='store_true', help="Execute the last message")
     parser.add_argument('--view', action='store_true', help="Print the last message.")
     parser.add_argument('--write', action='store_true', help="Write conversation to file (for non-interactive mode).")
     parser.add_argument('--email', action='store_true', help="Send an email with the last message.")
-    parser.add_argument('--url', type=str, help="Dump a list of user specified tags to the next message.", default=None, choices=['pre', 'p'])
+    parser.add_argument('--url', type=str, help="The url to fetch.")
+    parser.add_argument('--tags', type=str, help="The html tags to fetch.", nargs='+', default=['pre', 'p'])
+    parser.add_argument('--xml', type=str, help="The xml tag to wrap in.", default=None)
 
     argcomplete.autocomplete(parser)
     return parser.parse_args()
 
-
 def init_directories(args: argparse.Namespace) -> None:
     for directory in [args.ll_dir, args.exec_dir, args.cmd_dir]:
         os.makedirs(directory, exist_ok=True)
-
-def log_command(command: str, message: dict, args: argparse.Namespace) -> None:
-    """Log the executed command with transformed message to a specified log file."""
-    log_path = f"{args.cmd_dir}/{os.path.splitext(os.path.basename(args.load))[0]}.jsonl"
-    with open(log_path, 'a') as logfile:
-        logfile.write(json.dumps({'command': command, 'message': message}) + "\n")
 
 def llt_shell_log(cmd: str) -> None:
     file_path = os.path.join(os.getenv('LLT_PATH', ''), 'llt_shell.log')
@@ -101,26 +96,32 @@ def llt() -> None:
     messages = []
 
     cmds = init_cmd_map()
-    startup_cmds = ['load', 'file', 'prompt', 'completion', 'execute']
-    for cmd in cmds:
-        if getattr(args, cmd, None) and cmd in startup_cmds:
-            messages = cmds[cmd](messages, args)
+    startup_cmds = ['load', 'file', 'execute', 'xml', 'prompt', 'fold', 'complete']
+    for cmd in startup_cmds:
+        if getattr(args, cmd, None):
+            messages = cmds[cmd](messages, args, index=-1)
 
     Colors.print_header()
+    llt_logger.log_info("LLT session started", {"model": args.model, "temperature": args.temperature})
     print(user_greeting(os.getenv('USER', 'User'), args))
 
     while True:
         try:
-            cmd = llt_input(list(cmds.keys()))
+            (cmd, index) = llt_input(list(cmds.keys()))
+            print(cmd, index)
             if cmd in cmds:
-                messages = cmds[cmd](messages, args)
-                log_command(cmd, messages, args)
+                messages_before = messages.copy()
+                messages = cmds[cmd](messages, args, index)
+                llt_logger.log_command(cmd, messages_before, messages, args)
             else:
                 messages.append({'role': args.role, 'content': cmd})
+                llt_logger.log_info("User input added", {"role": args.role, "content_length": len(cmd)})
             llt_shell_log(cmd)
         except KeyboardInterrupt:
+            llt_logger.log_info("Command interrupted")
             print("\nCommand interrupted.")
         except Exception as e:
+            llt_logger.log_error(str(e), {"traceback": traceback.format_exc()})
             print(f"An error occurred: {e}\n{traceback.format_exc()}")
 
 if __name__ == "__main__":

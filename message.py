@@ -7,29 +7,38 @@ class Message(Dict):
     role: str
     content: any
 
-def load(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive\
-        else os.path.join(args.ll_dir, args.load)
-    if os.path.isdir(ll_path): ll_path = os.path.join(ll_path, "default.ll")
+def load(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
+    if not args.load:
+        args.load = "default"
+    ll_path = os.path.join(args.ll_dir, args.load)
+    if not args.non_interactive and not args.execute:
+        ll_path = path_input(ll_path, args.ll_dir)
     if not os.path.exists(ll_path):
         os.makedirs(os.path.dirname(ll_path), exist_ok=True)
-        return messages
-    with open(ll_path, 'r') as file:
-        ll = json.load(file)
-        idx = get_valid_index(messages, "load from", 0)
-        if idx == -1: messages.extend(ll)
-        elif not idx: messages = ll
-        args.load = ll_path
+    else:
+        with open(ll_path, 'r') as file:
+            messages = json.load(file)
+    args.load = ll_path
     return messages
 
-def write(messages: List[Message], args: Optional[Dict]) -> List[Message]:
-    ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.load)
+def write(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
+    if args.write:
+        if (args.write == "."):
+            args.write = args.load
+        ll_path = os.path.join(args.ll_dir, args.write)
+        args.write = None
+    else:
+        ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else os.path.join(args.ll_dir, args.load)
     os.makedirs(os.path.dirname(ll_path), exist_ok=True)
     with open(ll_path, 'w') as file:
         json.dump(messages, file, indent=2)
     return messages
 
-def prompt(messages: List[Message], args: Optional[Dict]) -> List[Message]:
+def prompt(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
+    # split prompt by newline
+    # the prompt will have newline literals in it 
+    # so we need to split it by newline and join it back together
+        
     message = Message(role=args.role, content=args.prompt)
     messages.append(message)
     return messages
@@ -43,9 +52,16 @@ def detach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     message_index = get_valid_index(messages, "detach", index)  
     return [messages.pop(message_index)]
 
-def fold(messages: List[Message], args: Optional[Dict] = None) -> List[Message]:
-    messages[-2]['content'] += "\n" + messages[-1]['content']
-    messages.pop()
+def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    """
+    Fold consecutive messages from the same role into a single message.
+    """
+    initial_length = len(messages)
+    while len(messages) > 1 and messages[-2]["role"] == args.role:
+        messages[-2]["content"] += "\n" + messages[-1]["content"]
+        messages.pop()
+    folded_messages = initial_length - len(messages)
+    print(f"Folded {folded_messages} message(s).")
     return messages
 
 def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
@@ -54,7 +70,6 @@ def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     return messages
 
 def content(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
-    from utils import content_input
     index = get_valid_index(messages, "modify content of", index)
     messages[index]['content'] = content_input()
     return messages
@@ -93,7 +108,7 @@ def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -
     print(f"\nTotal messages shown: {len(messages)}")
     return messages
 
-def cut(messages: List[str], args: Optional[Dict] = None) -> List[str]:
+def cut(messages: List[str], args: Dict, index: int = -1)  -> List[str]:
     if not messages: return messages
     try:
         values = input("Enter start and optional end index separated by comma (e.g., 2,5): ").split(',')

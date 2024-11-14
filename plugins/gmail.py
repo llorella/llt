@@ -54,7 +54,7 @@ def create_message(email: Email):
     return {'raw': raw}
 
 @plugin
-def email(messages: List[Dict], args: Dict)-> List[Dict]:
+def email(messages: List[Dict], args: Dict, index: int = -1)-> List[Dict]:
     config = load_config(os.path.expanduser('~/llt/test_email.json'))
     email = Email(to=config['to'], subject=config['subject'].format(subject="message from llt"), message=messages[-1]['content'])
     try:
