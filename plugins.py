@@ -4,9 +4,11 @@ import message
 completion_plugins = {
     'complete': completion.complete,
     'model': completion.model,
-    'role': completion.role,
+    'change_role': completion.change_role,
     'temperature': completion.temperature,
-    'max_tokens': completion.max_tokens
+    'max_tokens': completion.max_tokens,
+    'modify_args': completion.modify_args,
+    'get_args': completion.get_args
 }
 
 message_plugins = {
@@ -14,6 +16,7 @@ message_plugins = {
     'write': message.write,
     'view': message.view,
     'detach': message.detach,
+    'attach': message.attach,
     'fold': message.fold,
     'cut': message.cut,
     'insert': message.insert,
@@ -35,3 +38,5 @@ def plugin(func):
     return func
 #llt> programtically load messages.
 #lt>
+
+# file, function, url table

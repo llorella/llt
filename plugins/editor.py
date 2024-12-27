@@ -10,7 +10,7 @@ from utils import (
     path_input,
     content_input,
     get_valid_index,
-    encode_image,
+    encode_image_to_base64,
     language_extension_map,
     list_input,
 )
@@ -59,15 +59,31 @@ def extract_code_blocks(content: str) -> List[Dict]:
 
 
 @plugin
-def file_include(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
-    file_path = args.file if args.non_interactive else path_input(args.file, os.getcwd())
+def file_include(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    """
+    Includes a file's content into the messages. If the file is an image and the model supports it,
+    the image is encoded in base64 and included appropriately.
+    """
+    if args.file:
+        file_path = args.file
+        args.file = None
+    else:  
+        file_path = path_input(args.file, os.getcwd())
     
     if not os.path.exists(file_path):
         print(f"Error: File not found at {file_path}")
         return messages
+    
     _, ext = os.path.splitext(file_path)
     if ext.lower() in IMAGE_EXTS:
         prompt = args.prompt if args.non_interactive else content_input()
+        encoded_image = ""
+        try:
+            encoded_image = encode_image_to_base64(file_path)
+        except Exception as e:
+            print(f"Failed to encode image: {e}")
+            return messages
+        
         if args.model.startswith("claude"):
             messages.append(
                 {
@@ -77,11 +93,14 @@ def file_include(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -
                             "type": "image",
                             "source": {
                                 "type": "base64",
-                                "media_type": f"image/{os.path.splitext(file_path)[1][1:].lower()}",
-                                "data": f"file://{os.path.abspath(file_path)}",
+                                "media_type": f"image/{ext[1:].lower()}",
+                                "data": encoded_image,
                             },
                         },
-                        {"type": "text", "text": prompt},
+                        {
+                            "type": "text",
+                            "text": prompt,
+                        }
                     ],
                 }
             )
@@ -94,14 +113,14 @@ def file_include(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"file://{os.path.abspath(file_path)}"
+                                "url": f"data:image/{ext[1:].lower()};base64,{encoded_image}"
                             },
                         },
                     ],
                 }
             )
         else:
-            print("Unsupported model.")
+            print("Unsupported model for image inclusion.")
             return messages
     else:
         with open(file_path, "r") as file:
@@ -109,36 +128,9 @@ def file_include(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -
         if ext.lower() in language_extension_map:
             data = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{data}\n```"
         messages.append({"role": args.role, "content": data})
+    
+    # Clear the file argument after processing
     setattr(args, 'file', None)
-    return messages
-
-
-@plugin
-def encode_images(
-    messages: List[Dict[str, any]], args: Dict, index: int = -1
-) -> List[Dict[str, any]]:
-    for idx in range(len(messages)):
-        message = messages[idx]
-        if isinstance(message["content"], list) and len(message["content"]) == 2:
-            if args.model.startswith("claude"):
-                image_url = message["content"][0]["source"]["data"]
-                if image_url.startswith("file://"):
-                    image_path = image_url[7:]
-                    with open(image_path, "rb") as image_file:
-                        encoded_string = base64.b64encode(image_file.read()).decode(
-                            "utf-8"
-                        )
-                    message["content"][0]["source"]["data"] = encoded_string
-                    print(f"Image at index {idx+1} has been base64 encoded.")
-            else:
-                image_url = message["content"][1]["image_url"]["url"]
-                if image_url.startswith("file://"):
-                    image_path = image_url[7:]
-                    encoded_string = encode_image(image_path)
-                    message["content"][1]["image_url"][
-                        "url"
-                    ] = f"data:image/{os.path.splitext(image_path)[1][1:]};base64,{encoded_string}"
-                    print(f"Image at index {idx+1} has been base64 encoded.")
     return messages
 
 
@@ -237,40 +229,36 @@ def execute_command(messages: List[Dict[str, any]], args: Dict, index: int = -1)
     if args.execute:
         message_index = index
         args.execute = False
-        check = False
+        skip_check = True
     else:
         message_index = get_valid_index(messages, "execute command of", index) if not args.non_interactive else -1
-        check = True
+        skip_check = False
     code_blocks = extract_code_blocks(messages[message_index]['content'])
-    results = [run_code_block(code_block, check) for code_block in code_blocks]
-
+    results = [run_code_block(code_block, skip_check) for code_block in code_blocks]
+    
+    args.xml_wrap = "command"
+    messages = xml_wrap(messages, args, message_index)
+    
     block_output_string = ""
     for i, result in enumerate(results):
         if result is None:
             continue
         code_block = code_blocks[i]
-        block_output_string += f"<code_block_{i}>\n```{code_block['language']}\n{code_block['code']}\n```\n</code_block_{i}>\n"
-        block_output_string += f"\n<output_{i}>\n{result}\n</output_{i}>\n"
-        messages.append(
-            {"role": messages[message_index]["role"], "content": block_output_string}
-        )
-
-    if not args.execute:
-        ask_user_delete = (
-            input("Delete original message? (y for yes, any other key to cancel): ")
-            .strip()
-            .lower()
-        )
-        if ask_user_delete == "y":
-            messages.pop(message_index - 1)
-    setattr(args, "execute", False)
-    return messages
-
+        block_output_string += f"{result}\n"
+    messages.append(
+        {"role": messages[message_index]["role"], "content": block_output_string}
+    )
+    args.xml_wrap = "output"
+    return xml_wrap(messages, args, -1)
 
 @plugin
-def xml_wrap(messages: List[Dict[str, any]], args: Dict) -> List[Dict[str, any]]:
-    index = get_valid_index(messages, "wrap in xml", -1) if not args.xml_wrap else -1
-    tag_name = content_input() if not args.xml_wrap else args.xml_wrap
+def xml_wrap(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    if args.xml_wrap:
+        tag_name = args.xml_wrap
+        args.xml_wrap = None
+    else:
+        tag_name = content_input("Enter tag name (or return to use most recent message)") or messages[get_valid_index(messages, "message containing tag name", index)]['content']
+        
     if tag_name:
         messages[index][
             "content"
@@ -347,21 +335,6 @@ def run_code_block(code_block: Dict, skip_check: bool = False) -> str:
     except subprocess.CalledProcessError as e:
         result = f"Error executing command: {e}\nError details:\n{e.stderr}"
     return result.stdout
-
-
-@plugin
-def xml_wrap(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:
-    if args.xml:
-        tag_name = args.xml
-        args.xml = None
-    else:
-        index = get_valid_index(messages, "wrap in xml", -1) if not args.non_interactive else -1
-        tag_name = content_input() if not args.non_interactive else args.prompt
-    if tag_name:
-        messages[index][
-            "content"
-        ] = f"<{tag_name}>\n{messages[index]['content']}\n</{tag_name}>"
-    return messages
 
 @plugin
 def strip_trailing_newline(messages: List[Dict[str, any]], args: Dict, index: int = -1)  -> List[Dict[str, any]]:

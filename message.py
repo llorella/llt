@@ -38,6 +38,7 @@ def write(messages: List[Message], args: Dict, index: int = -1)  -> List[Message
     Colors.print_colored(
         f"Saved {len(messages)} messages to '{ll_path}'.", Colors.GREEN
     )
+    args.load = ll_path
     return messages
 
 def prompt(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
@@ -65,6 +66,21 @@ def remove(
     removed_message = messages.pop(message_index)
     Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
     setattr(args, "remove", None)
+    return messages
+
+def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+    """
+    Attach another conversation history to the current one.
+    """
+    ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else None
+    if ll_path is None:
+        return messages
+    
+    with open(ll_path, 'r') as file:
+        new_messages = json.load(file)
+        
+    messages.extend(new_messages)
+    Colors.print_colored(f"Attached {len(new_messages)} messages to the current conversation.", Colors.GREEN)
     return messages
 
 
