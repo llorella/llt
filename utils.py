@@ -32,6 +32,7 @@ class Colors:
     CYAN = "\033[36m"
     LIGHT_BLUE = "\033[94m"
     LIGHT_GREEN = "\033[92m"
+    PURPLE = "\033[95m"
 
     @staticmethod
     def print_colored(text: str, color: str = "") -> None:
@@ -42,20 +43,6 @@ class Colors:
     def print_bold(text: str, color: str = "") -> None:
         """Print bold text with the specified ANSI color."""
         print(f"{Colors.BOLD}{color}{text}{Colors.RESET}")
-
-    @staticmethod
-    def print_header() -> None:
-        """Print a stylized header."""
-        header = (
-            f"{Colors.YELLOW}{Colors.BOLD}"
-            "*********************************************************\n"
-            "*********************************************************\n"
-            "***** Welcome to llt, the little language terminal. *****\n"
-            "*********************************************************\n"
-            "*********************************************************\n"
-            f"{Colors.RESET}"
-        )
-        print(header)
 
     @staticmethod
     def pretty_print_dict(message: Dict) -> None:
@@ -172,8 +159,8 @@ def list_input(values: List[str], input_string: str = "Enter a value from list")
     finally:    
         readline.set_completer(None)
 
-def content_input() -> str:
-    print("Enter content below.")
+def content_input(display_string: str = "Enter content below.") -> str:
+    print(display_string)
     Colors.print_colored("*********************************************************", Colors.YELLOW)
     content = input("> ") or ""
     Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
@@ -230,10 +217,40 @@ def count_image_tokens(file_path: str) -> int:
         return count_image_tokens_resized(width, height)
 
 
-def encode_image(image_path: str) -> str:
-    """Encode an image to a base64 string."""
-    with open(image_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode("utf-8")
+def encode_image_to_base64(image_path: str, max_dimension: int = 1568) -> str:
+    """
+    Encodes an image to a base64 string after resizing if necessary.
+    
+    Args:
+        image_path (str): The file path to the image.
+        max_dimension (int): The maximum allowed dimension (width or height).
+        
+    Returns:
+        str: Base64 encoded string of the image.
+        
+    Raises:
+        FileNotFoundError: If the image file does not exist.
+        ValueError: If the image format is unsupported.
+    """
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(f"Image file not found: {image_path}")
+    
+    supported_formats = ('.jpeg', '.jpg', '.png', '.gif', '.webp')
+    if not image_path.lower().endswith(supported_formats):
+        raise ValueError(f"Unsupported image format for file: {image_path}")
+    
+    # Resize image if necessary
+    
+    resized_image_path = image_path
+    
+    with open(resized_image_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+    
+    # Optionally, remove the resized image if it's a temporary file
+    if resized_image_path != image_path:
+        os.remove(resized_image_path)
+    
+    return encoded_string
 
 
 def encoded_img_to_pil_img(data_str: str):
