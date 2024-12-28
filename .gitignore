@@ -2,13 +2,16 @@
 *
 
 # explicitly include the files you want to track
+!.gitignore
 !plugins
 !main.py
 !plugins.py
 !completion.py
 !editor.py
 !message.py
-!utils/*
+!utils/file_diff.py
+!utils/helpers.py
+!utils/md_parser.py
 !plugins/web.py
 !gmail.py
 !plugins/editor.py
