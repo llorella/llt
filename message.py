@@ -3,13 +3,16 @@
 import os
 import json
 from typing import Optional, Dict, List
-from utils import content_input, path_input, Colors, get_valid_index, list_input
+
+from plugins import plugin
+from utils.helpers import content_input, path_input, Colors, get_valid_index, list_input
 
 
 class Message(Dict):
     role: str
     content: any
 
+@plugin
 def load(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
     if not args.load:
         args.load = "default"
@@ -24,6 +27,7 @@ def load(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]
     args.load = ll_path
     return messages
 
+@plugin
 def write(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
     if args.write:
         if (args.write == "."):
@@ -41,6 +45,7 @@ def write(messages: List[Message], args: Dict, index: int = -1)  -> List[Message
     args.load = ll_path
     return messages
 
+@plugin
 def prompt(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
     # split prompt by newline
     # the prompt will have newline literals in it 
@@ -51,7 +56,7 @@ def prompt(messages: List[Message], args: Dict, index: int = -1)  -> List[Messag
     Colors.print_colored("Added new prompt message.", Colors.GREEN)
     return messages
 
-
+@plugin
 def remove(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
@@ -68,6 +73,7 @@ def remove(
     setattr(args, "remove", None)
     return messages
 
+@plugin
 def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Attach another conversation history to the current one.
@@ -83,7 +89,7 @@ def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     Colors.print_colored(f"Attached {len(new_messages)} messages to the current conversation.", Colors.GREEN)
     return messages
 
-
+@plugin
 def detach(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
@@ -97,7 +103,7 @@ def detach(
     )
     return [detached_message]
 
-
+@plugin
 def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Fold consecutive messages from the same role into a single message.
@@ -110,7 +116,7 @@ def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) 
     print(f"Folded {folded_messages} message(s).")
     return messages
 
-
+@plugin
 def insert(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
@@ -125,6 +131,7 @@ def insert(
     )
     return messages
 
+@plugin
 def content(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     index = get_valid_index(messages, "modify content of", index)
     new_content = content_input()
@@ -134,7 +141,7 @@ def content(messages: List[Message], args: Optional[Dict] = None, index: int = -
     )
     return messages
 
-
+@plugin
 def role(
     messages: List[Message], args: Optional[Dict] = None, index: int = -1
 ) -> List[Message]:
@@ -151,7 +158,7 @@ def role(
     )
     return messages
 
-
+@plugin
 def view(
     messages: List[Message], args: Optional[Dict] = None, index: int = 0
 ) -> List[Message]:
@@ -196,6 +203,7 @@ def view(
     Colors.print_colored(f"Total messages shown: {len(messages)}", Colors.YELLOW)
     return messages
 
+@plugin
 def cut(messages: List[str], args: Dict, index: int = -1)  -> List[str]:
     if not messages: return messages
     try:

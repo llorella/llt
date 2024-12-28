@@ -6,10 +6,10 @@ import json
 from typing import List, Dict, Any
 
 from message import Message
-from utils import list_input, get_valid_index, content_input, encode_image_to_base64, Colors
+from utils.helpers import list_input, get_valid_index, content_input, encode_image_to_base64, Colors
+from plugins import plugin
 
 import anthropic
-
 
 def load_config(path: str):
     with open(path, 'r') as config_file:
@@ -37,6 +37,7 @@ def get_provider_details(model_name: str):
                 return provider, api_key_string, completion_url
     raise ValueError(f"Model {model_name} not found in configuration.")
 
+@plugin
 def format_args(args) -> str:
     """Format args into a readable string with color coding."""
     args_dict = vars(args)
@@ -73,11 +74,13 @@ def format_args(args) -> str:
     
     return formatted_str
 
+@plugin
 def get_args(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     """Display current arguments in a formatted way."""
     print(format_args(args))
     return messages
 
+@plugin
 def modify_args(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     """
     Enhanced interface for modifying arguments with categorization and better UX.
@@ -299,7 +302,8 @@ def get_local_completion(messages: List[Dict[str, any]], args: Dict, index: int 
             print("KeyboardInterrupt")
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Error running local model {args.model}: {e.stderr}")
-    
+
+@plugin 
 def complete(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]: 
     provider, api_key_string, completion_url = get_provider_details(args.model)
     if provider == "anthropic":
@@ -311,23 +315,25 @@ def complete(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, 
     messages.append(completion)
     return messages
 
-
+@plugin
 def model(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
     model = list_input(full_model_choices, "Select model to use")
     if model: args.model = model
     return messages
 
+@plugin
 def change_role(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
     message_index = get_valid_index(messages, "modify role of", index)
     messages[message_index]['role'] = list_input(["user", "assistant", "system", "tool"], "Select role")
     return messages
 
+@plugin
 def temperature(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
     temperature = input(f"Enter temperature (default is {args.temperature}): ")
     if temperature: args.temperature = float(temperature)
     return messages
 
-
+@plugin
 def max_tokens(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
     max_tokens = input(f"Enter max tokens (default is {args.max_tokens}): ")
     if max_tokens: args.max_tokens = int(max_tokens)
