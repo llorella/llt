@@ -1,13 +1,11 @@
 #!/usr/bin/python3
 
 import os
-import json
 import argparse
 import importlib.util
-from typing import List, Dict, Callable
+from typing import Dict, Callable
 import traceback
 import argcomplete
-import time  # Added for timing
 
 from utils import Colors, llt_input
 from plugins import plugins
@@ -32,10 +30,6 @@ def parse_arguments() -> argparse.Namespace:
     """Parse command-line arguments with dynamic plugin flags."""
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
-    for plugin in plugins.keys():
-        if plugin not in ["help", "quit"]:  # these are already added
-            parser.add_argument(f"--{plugin}", type=str, help=f"Run {plugin} plugin.")
-
     parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation history file. JSON formatted list of natural language messages.", default="")
     parser.add_argument('-f', '--file', type=str, help="Source files to include in the current session.", default="")
     parser.add_argument('-p', '--prompt', type=str, help="Prompt string.", default="")
@@ -48,19 +42,25 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--cmd_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'cmd'))
     parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'exec'))
     parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'll/'))
-    parser.add_argument('-n', '--non_interactive', action='store_true', help="Run in non-interactive mode.")
+    parser.add_argument('-n', '--non_interactive', '--quit', action='store_true', help="Run in non-interactive mode.")
+    
+
 
     # Plugin flags
     parser.add_argument('-c', '--complete', action='store_true', help="Complete the last message.")
+    parser.add_argument('--write', type=str, help="Write conversation to file (for non-interactive mode).")
+
     parser.add_argument('--detach', action='store_true', help="Pop last message from given ll.")
     parser.add_argument('--fold', action='store_true', help="Fold consecutive messages from the same role into a single message.")
     parser.add_argument('--execute', action='store_true', help="Execute the last message")
     parser.add_argument('--view', action='store_true', help="Print the last message.")
-    parser.add_argument('--write', action='store_true', help="Write conversation to file (for non-interactive mode).")
     parser.add_argument('--email', action='store_true', help="Send an email with the last message.")
-    parser.add_argument('--url', type=str, help="The url to fetch.")
-    parser.add_argument('--tags', type=str, help="The html tags to fetch.", nargs='+', default=['pre', 'p'])
-    parser.add_argument('--xml', type=str, help="The xml tag to wrap in.", default=None)
+    parser.add_argument('--url', type=str, help="The url to fetch.", default=None)
+    parser.add_argument('--tags', type=str, help="Tag group or comma-separated list of HTML tags to fetch.", default='content' )
+
+    parser.add_argument('--xml_wrap', '--xml', type=str, help="The xml tag to wrap in.", default=None)
+    
+    parser.add_argument('--embeddings', type=str, help="The path to the embeddings file.", default="plugins/embeddings.csv")    
 
     argcomplete.autocomplete(parser)
     args = parser.parse_args()
@@ -91,7 +91,7 @@ def init_cmd_map() -> Dict[str, Callable]:
     """Initialize a command map with plugin commands and their abbreviations."""
     command_map = {}
     plugin_keys = ", ".join(plugins.keys())
-    Colors.print_colored(f"{f'Available plugins'}: {plugin_keys}", Colors.LIGHT_GREEN)
+    Colors.print_colored(f"Available plugins: {plugin_keys}", Colors.LIGHT_GREEN)
     for cmd, function in plugins.items():
         if cmd not in command_map:
             command_map[cmd] = function
@@ -136,16 +136,17 @@ def llt() -> None:
     messages = []
 
     cmds = init_cmd_map()
-    startup_cmds = ['load', 'file', 'execute', 'xml', 'prompt', 'fold', 'complete']
+    startup_cmds = ['load', 'file', 'execute', 'xml', 'url', 'prompt', 'fold', 'complete', 'write', 'quit']
     for cmd in startup_cmds:
         if getattr(args, cmd, None):
             messages = cmds[cmd](messages, args, index=-1)
 
     Colors.print_header()
-    llt_logger.log_info("LLT session started", {"model": args.model, "temperature": args.temperature})
+    
+    llt_logger.log_info("llt interactive session started", {key: val for key, val in vars(args).items() if key not in startup_cmds})
+    
     print(user_greeting(os.getenv('USER', 'User'), args))
 
-    # Main interactive loop
     while True:
         try:
             (cmd, index) = llt_input(list(cmds.keys()))

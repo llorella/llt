@@ -6,8 +6,7 @@ import json
 from typing import List, Dict, Any
 
 from message import Message
-from plugins import plugin
-from utils import list_input, get_valid_index, content_input
+from utils import list_input, get_valid_index, content_input, encode_image_to_base64, Colors
 
 import anthropic
 
@@ -38,66 +37,122 @@ def get_provider_details(model_name: str):
                 return provider, api_key_string, completion_url
     raise ValueError(f"Model {model_name} not found in configuration.")
 
-@plugin
-def modify_args(
-    messages: List[Dict[str, any]], args: Dict, index: int = -1
-) -> List[Dict[str, any]]:
-    """
-    Allows the user to modify any field in the args Namespace.
-    """
-    # Convert Namespace to dictionary for easier manipulation
+def format_args(args) -> str:
+    """Format args into a readable string with color coding."""
     args_dict = vars(args)
+    max_key_length = max(len(str(key)) for key in args_dict.keys())
+    formatted_str = f"\n{Colors.BOLD}Current Configuration:{Colors.RESET}\n"
+    formatted_str += "=" * (max_key_length + 30) + "\n"
+    
+    # Group arguments by category
+    categories = {
+        "Model Settings": ["model", "temperature", "max_tokens", "top_p", "logprobs"],
+        "Input/Output": ["load", "file", "write", "prompt"],
+        "Role Settings": ["role"],
+        "Directories": ["cmd_dir", "exec_dir", "ll_dir"],
+        "Mode Settings": ["non_interactive"],
+        "Plugin Settings": ["complete", "detach", "fold", "execute", "view", "email", "url", "tags", "xml", "embeddings"]
+    }
+    
+    for category, keys in categories.items():
+        relevant_args = {k: args_dict[k] for k in keys if k in args_dict}
+        if relevant_args:
+            formatted_str += f"\n{Colors.BLUE}{category}:{Colors.RESET}\n"
+            formatted_str += "-" * (max_key_length + 30) + "\n"
+            for key, value in relevant_args.items():
+                key_str = f"{key}:".ljust(max_key_length + 2)
+                if isinstance(value, bool):
+                    value_color = Colors.GREEN if value else Colors.RED
+                    formatted_str += f"{Colors.BOLD}{key_str}{Colors.RESET} {value_color}{value}{Colors.RESET}\n"
+                elif key == "model":
+                    formatted_str += f"{Colors.BOLD}{key_str}{Colors.RESET} {Colors.PURPLE}{value}{Colors.RESET}\n"
+                elif isinstance(value, (int, float)):
+                    formatted_str += f"{Colors.BOLD}{key_str}{Colors.RESET} {Colors.YELLOW}{value}{Colors.RESET}\n"
+                else:
+                    formatted_str += f"{Colors.BOLD}{key_str}{Colors.RESET} {value}\n"
+    
+    return formatted_str
 
-    print("Current values:")
-    for field, value in args_dict.items():
-        print(f"{field}: {value}")
+def get_args(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    """Display current arguments in a formatted way."""
+    print(format_args(args))
+    return messages
 
-    # Get list of modifiable fields
-    modifiable_fields = [
-        field for field in args_dict.keys() if not field.startswith("_")
-    ]
+def modify_args(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+    """
+    Enhanced interface for modifying arguments with categorization and better UX.
+    """
+    args_dict = vars(args)
+    
+    # Print current configuration
+    print(format_args(args))
+    
+    # Categorized fields for better organization
+    categories = {
+        "1. Model Settings": ["model", "temperature", "max_tokens", "top_p", "logprobs"],
+        "2. Input/Output": ["load", "file", "write", "prompt"],
+        "3. Role Settings": ["role"],
+        "4. Directories": ["cmd_dir", "exec_dir", "ll_dir"],
+        "5. Mode Settings": ["non_interactive"],
+        "6. Plugin Settings": ["complete", "detach", "fold", "execute", "view", "email", "url", "tags", "xml", "embeddings"]
+    }
+    
+    # Let user select category first
+    print(f"\n{Colors.BOLD}Select a category to modify:{Colors.RESET}")
+    category = list_input(list(categories.keys()))
+    
+    if not category:
+        print("No category selected. Args remain unchanged.")
+        return messages
+    
+    # Let user select field from category
+    fields_in_category = categories[category]
+    print(f"\n{Colors.BOLD}Select field to modify:{Colors.RESET}")
+    field_to_modify = list_input(fields_in_category)
+    
+    if not field_to_modify:
+        print("No field selected. Args remain unchanged.")
+        return messages
 
-    # Let user select field to modify
-    field_to_modify = list_input(modifiable_fields, "Select field to modify")
+    current_value = args_dict[field_to_modify]
+    print(f"\nCurrent value of {Colors.BOLD}{field_to_modify}{Colors.RESET}: {Colors.YELLOW}{current_value}{Colors.RESET}")
 
-    if field_to_modify:
-        current_value = args_dict[field_to_modify]
-        print(f"Current value of {field_to_modify}: {current_value}")
-
-        # Determine the type of the current value
-        value_type = type(current_value)
-
-        # Get new value from user
-        if value_type == bool:
-            new_value = list_input(
-                ["True", "False"], f"Select new value for {field_to_modify}"
-            )
-            new_value = new_value == "True"
-        elif value_type in [int, float]:
-            new_value = content_input(
-                f"Enter new value for {field_to_modify} ({value_type.__name__}): "
-            )
-            new_value = value_type(new_value)
-        elif value_type == list:
-            new_value = content_input(
-                f"Enter new value for {field_to_modify} (comma-separated list): "
-            )
-            new_value = [item.strip() for item in new_value.split(",")]
+    # Type-specific input handling with validation
+    try:
+        if isinstance(current_value, bool):
+            new_value = list_input(["True", "False"]) == "True"
         elif field_to_modify == "model":
-            new_value = list_input(full_model_choices, "Select model")
+            new_value = list_input(full_model_choices)
         elif field_to_modify == "role":
-            new_value = list_input(
-                ["user", "assistant", "system", "tool"], "Select role"
-            )
+            new_value = list_input(["user", "assistant", "system", "tool"])
+        elif isinstance(current_value, int):
+            while True:
+                try:
+                    new_value = int(content_input(f"Enter new integer value for {field_to_modify}: "))
+                    break
+                except ValueError:
+                    print(f"{Colors.RED}Please enter a valid integer.{Colors.RESET}")
+        elif isinstance(current_value, float):
+            while True:
+                try:
+                    new_value = float(content_input(f"Enter new float value for {field_to_modify}: "))
+                    break
+                except ValueError:
+                    print(f"{Colors.RED}Please enter a valid float.{Colors.RESET}")
         else:
             new_value = content_input(f"Enter new value for {field_to_modify}: ")
-
-        # Update the args Namespace
-        setattr(args, field_to_modify, new_value)
-        print(f"Updated {field_to_modify} to: {new_value}")
-    else:
-        print("No field selected. Args remain unchanged.")
-
+    
+        if new_value is not None:  # Allow empty string but not None
+            setattr(args, field_to_modify, new_value)
+            print(f"\n{Colors.GREEN}Successfully updated {field_to_modify}:{Colors.RESET}")
+            print(f"  {Colors.BOLD}Old value:{Colors.RESET} {current_value}")
+            print(f"  {Colors.BOLD}New value:{Colors.RESET} {new_value}")
+        else:
+            print(f"{Colors.YELLOW}Value unchanged.{Colors.RESET}")
+            
+    except Exception as e:
+        print(f"{Colors.RED}Error updating value: {str(e)}{Colors.RESET}")
+        
     return messages
 
 def send_request(completion_url: str, api_key_string: str, messages: List[Dict[str, Any]], args: Dict[str, Any]) -> Dict[str, Any]:
@@ -108,10 +163,12 @@ def send_request(completion_url: str, api_key_string: str, messages: List[Dict[s
     data = {
         "messages": messages,
         "model": args.model,
+        "max_completion_tokens": args.max_tokens,
         "temperature": args.temperature,
         "max_tokens": args.max_tokens,
         "stream": True,
     }
+    
     full_response_content = ""
     try:
         with requests.post(
@@ -136,30 +193,52 @@ def send_request(completion_url: str, api_key_string: str, messages: List[Dict[s
                             break
     except requests.RequestException as e:
         print(f"Request failed: {e}")
+        print(f"Error details:\n{e.response.status_code}\n{e.response.text}")
     return {"role": "assistant", "content": full_response_content}
 
-
-# anthropic's api is  different from other providers
-def get_anthropic_completion(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Dict[str, any]:
+def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> Dict[str, Any]:
+    """
+    Sends a completion request to Anthropic's API with proper image encoding.
+    """
     anthropic_client = anthropic.Client()
-    if messages[0]["role"] == "system":
+    if messages and messages[0].get("role") == "system":
         system_prompt = messages[0]["content"]
         messages = messages[1:]
     else:
         system_prompt = "You are a helpful programming assistant."
+    
+    # Encode images in messages
+    for message in messages:
+        if isinstance(message.get("content"), list):
+            for content_item in message["content"]:
+                if content_item.get("type") == "image" and content_item["source"].get("data").startswith("file://"):
+                    image_path = content_item["source"]["data"][7:]  # Remove 'file://'
+                    try:
+                        encoded_image = encode_image_to_base64(image_path)
+                        content_item["source"]["data"] = encoded_image
+                        content_item["source"]["type"] = "base64"
+                        content_item["source"]["media_type"] = f"image/{os.path.splitext(image_path)[1][1:].lower()}"
+                    except Exception as e:
+                        raise RuntimeError(f"Failed to encode image {image_path}: {e}")
+    
     response_content = ""
-    with anthropic_client.messages.stream(
-        model=args.model,
-        system=system_prompt,
-        messages=messages,
-        temperature=args.temperature,
-        max_tokens=args.max_tokens,
-    ) as stream:
-        for text in stream.text_stream:
-            print(text, end="", flush=True)
-            response_content += text
-        print("\r")
+    try:
+        with anthropic_client.messages.stream(
+            model=args.model,
+            system=system_prompt,
+            messages=messages,
+            temperature=args.temperature,
+            max_tokens=args.max_tokens,
+        ) as stream:
+            for text in stream.text_stream:
+                print(text, end="", flush=True)
+                response_content += text
+            print("\r")
+    except Exception as e:
+        raise RuntimeError(f"Anthropic API request failed: {e}")
+    
     return {"role": "assistant", "content": response_content}
+
 
 
 def get_local_completion(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Dict[str, any]:
@@ -221,7 +300,6 @@ def get_local_completion(messages: List[Dict[str, any]], args: Dict, index: int 
     except subprocess.CalledProcessError as e:
         raise RuntimeError(f"Error running local model {args.model}: {e.stderr}")
     
-@plugin
 def complete(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]: 
     provider, api_key_string, completion_url = get_provider_details(args.model)
     if provider == "anthropic":
@@ -235,11 +313,11 @@ def complete(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, 
 
 
 def model(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
-    model = list_input(full_model_choices, "Select model to use", index)
+    model = list_input(full_model_choices, "Select model to use")
     if model: args.model = model
     return messages
 
-def role(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
+def change_role(messages: List[Message], args: Dict, index: int = -1) -> Dict[str, any]:
     message_index = get_valid_index(messages, "modify role of", index)
     messages[message_index]['role'] = list_input(["user", "assistant", "system", "tool"], "Select role")
     return messages
@@ -255,7 +333,6 @@ def max_tokens(messages: List[Message], args: Dict, index: int = -1) -> Dict[str
     if max_tokens: args.max_tokens = int(max_tokens)
     return messages
 
-@plugin
 def whisper(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     import pyaudio
     import wave
