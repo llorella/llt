@@ -325,6 +325,27 @@ language_extension_map = {
     ".go": "go",
     ".csv": "csv",
     ".cu": "cuda",
+    ".jsx": "javascript",
+    ".tsx": "typescript"
+}
+
+language_comment_map = {
+    'python': '#',
+    'shell': '#',
+    'text': '#',
+    'markdown': '#',
+    'html': '<!--',
+    'css': '/*',
+    'javascript': '//',
+    'typescript': '//',
+    'json': '//',
+    'yaml': '#',
+    'c': '//',
+    'cpp': '//',
+    'rust': '//',
+    'csv': '#',
+    'jsx': '//',
+    'tsx': '//'
 }
 
 
