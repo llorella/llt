@@ -8,7 +8,7 @@
 !completion.py
 !editor.py
 !message.py
-!utils/
+!utils/*
 !plugins/web.py
 !gmail.py
 !plugins/editor.py
