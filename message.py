@@ -17,7 +17,7 @@ def load(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]
     if not args.load:
         args.load = "default"
     ll_path = os.path.join(args.ll_dir, args.load)
-    if not args.non_interactive and not args.execute:
+    if not args.non_interactive:
         ll_path = path_input(ll_path, args.ll_dir)
     if not os.path.exists(ll_path):
         os.makedirs(os.path.dirname(ll_path), exist_ok=True)
@@ -78,7 +78,12 @@ def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     """
     Attach another conversation history to the current one.
     """
-    ll_path = path_input(args.load, args.ll_dir) if not args.non_interactive else None
+    if args.attach:
+        ll_path = os.path.join(args.ll_dir, args.attach)
+        args.attach = None
+    else:
+        ll_path = path_input(None, args.ll_dir)
+        
     if ll_path is None:
         return messages
     
@@ -86,7 +91,7 @@ def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
         new_messages = json.load(file)
         
     messages.extend(new_messages)
-    Colors.print_colored(f"Attached {len(new_messages)} messages to the current conversation.", Colors.GREEN)
+    if not args.non_interactive: Colors.print_colored(f"Attached {len(new_messages)} messages to the current conversation.", Colors.GREEN)
     return messages
 
 @plugin
@@ -96,18 +101,28 @@ def detach(
     """
     Detach (extract) a message from the conversation.
     """
-    message_index = get_valid_index(messages, "detach", index)
-    detached_message = messages.pop(message_index)
-    Colors.print_colored(
-        f"Detached message at index {message_index + 1}.", Colors.GREEN
+    if args.detach:
+        index = args.detach
+        args.detach = None
+    else:
+        index = get_valid_index(messages, "detach", index) 
+        
+    detached_message = messages.pop(index)
+    
+    if not args.non_interactive: Colors.print_colored(
+        f"Detached message at index {index + 1}.", Colors.GREEN
     )
+    
     return [detached_message]
 
 @plugin
 def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
-    Fold consecutive messages from the same role into a single message.
-    """
+    Arg: --fold
+    Short: --f
+    Help: "Fold consecutive messages from the same role into one."
+    Type: bool
+    """        
     initial_length = len(messages)
     while len(messages) > 1 and messages[-2]["role"] == args.role:
         messages[-2]["content"] += "\n" + messages[-1]["content"]

@@ -10,19 +10,33 @@ from typing import Dict, Callable
 from logger import llt_logger
 from utils.helpers import Colors, llt_input
 from plugins import plugins, load_plugins  # Our plugin registry + dynamic loading
+"""
+Arg: --apply_changes
+Short: -a
+Help: Make edits to files from messages. 
+Type: string
+Default: untitled
+"""
+"""
+load, ll: string - name in ll space
+files, f: string of whitespace sep pathnames
+
+
+all bool flags can be string inputs that check 
+"""
 
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
     # Common arguments
-    parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation file (JSON)", default="")
-    parser.add_argument('--file', '-f', type=str, help="A file path for code or data", default="")
-    parser.add_argument('--prompt', '-p', type=str, help="Prompt text", default="")
+    parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation file (JSON)", default=None)
+    parser.add_argument('--file', '-f', type=str, help="A file path for code or data.", default=None)
+    parser.add_argument('--prompt', '-p', type=str, help="Prompt text", default=None)
     parser.add_argument('--role', '-r', type=str, help="Specify role (user, system, etc.)", default="user")
-    parser.add_argument('--model', '-m', type=str, help="Which LLM model to use", default="gpt-4o-mini")
+    parser.add_argument('--model', '-m', type=str, help="Which LLM model to use", default="deepseek-chat")
     parser.add_argument('--temperature', '-t', type=float, help="Sampling temperature", default=0.9)
-    parser.add_argument('--max_tokens', type=int, help="Max tokens to generate", default=4096)
+    parser.add_argument('--max_tokens', type=int, help="Max tokens to generate", default=8192)
     parser.add_argument('--logprobs', type=int, help="Include logprobs in completion", default=0)
     parser.add_argument('--top_p', type=float, help="Top-p sampling", default=1.0)
 
@@ -33,17 +47,22 @@ def parse_arguments() -> argparse.Namespace:
 
     # Interactive / Non-interactive
     parser.add_argument('--non_interactive', '-n', action='store_true', 
-                        help="Run in non-interactive mode (batch)")
+                        help="Run in non-interactive mode.")
+    
+    parser.add_argument('--attach', type=str, help="Conversation file (JSON) to attach.", default=None)
+
 
     # Plugin-related flags (direct calls)
     parser.add_argument('--complete', '-c', action='store_true', help="Call 'complete' plugin on last message")
+    parser.add_argument('--paste', action='store_true', help="Paste clipboard buffer into prompt.")
+    parser.add_argument('--remove', action='store_true', help="Remove latest message.")
     parser.add_argument('--write', type=str, help="Write conversation to a file")
     parser.add_argument('--detach', action='store_true', help="Detach last message")
     parser.add_argument('--fold', action='store_true', help="Fold consecutive messages of same role")
     parser.add_argument('--execute', action='store_true', help="Execute code blocks in last message")
     parser.add_argument('--view', action='store_true', help="View the last message")
     parser.add_argument('--email', action='store_true', help="Send an email with the last message")
-    parser.add_argument('--url', type=str, help="Fetch content from a URL")
+    parser.add_argument('--url_fetch', action='store_true', help="Fetch content of url from last message.")
     parser.add_argument('--tags', type=str, help="HTML tags to fetch from URL", default='content')
     parser.add_argument('--xml_wrap', '--xml', type=str, help="Wrap last message in an XML tag")
     parser.add_argument('--embeddings', type=str, help="Path to embeddings DB (csv) or dir for generating embeddings")
@@ -90,7 +109,9 @@ def llt_shell_log(cmd: str) -> None:
             logfile.write(f"llt> {cmd}\n")
     except Exception as e:
         Colors.print_colored(f"Failed to log shell command '{cmd}': {e}", Colors.RED)
+        
 
+# by default, every plugin has a string flag
 
 def run_startup_plugins(messages: list, args: argparse.Namespace, cmd_map: Dict[str, Callable]) -> list:
     """
@@ -100,19 +121,23 @@ def run_startup_plugins(messages: list, args: argparse.Namespace, cmd_map: Dict[
     """
     flag_to_plugin_call = [
         # (boolean_flag_or_value, plugin_name)
-        (args.complete, 'complete'),
         (args.load, 'load'),
+        (args.paste, 'paste'),
+        (args.remove, 'remove'),
+        (args.attach, 'attach'),
         (args.file, 'file'),
         (args.prompt, 'prompt'),
+        (args.url_fetch, 'url_fetch'),     # or "url" plugin
+        (args.xml_wrap, 'xml_wrap'),
+        (args.fold, 'fold'),
+        (args.complete, 'complete'),
         (args.write, 'write'),       # if write is non-empty string
         (args.detach, 'detach'),
-        (args.fold, 'fold'),
         (args.execute, 'execute'),   # or "execute_command" if that’s your plugin name
         (args.view, 'view'),
         (args.email, 'email'),       # if you have a plugin for emailing
-        (args.url, 'url_fetch'),     # or "url" plugin
-        (args.xml_wrap, 'xml_wrap'),
         (args.embeddings, 'embeddings'),  # or "embeddings" plugin
+        (args.non_interactive, 'quit')
     ]
 
     for flag_value, plugin_name in flag_to_plugin_call:
@@ -134,7 +159,6 @@ def llt() -> None:
     # Now call the startup plugins based on CLI flags
     messages = run_startup_plugins(messages, args, cmd_map)
 
-    # Print header
     from utils.helpers import Colors
     Colors.print_header()
 
@@ -148,7 +172,6 @@ def llt() -> None:
         # If in batch mode, we won't enter the interactive loop
         return
 
-    # Interactive loop
     while True:
         try:
             cmd, index = llt_input(list(cmd_map.keys()))
