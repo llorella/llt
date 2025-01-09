@@ -4,23 +4,23 @@ import re
 from typing import List, Dict, Optional
 
 language_extension_map = {
-    ".py": "python",
-    ".sh": "shell",
-    ".md": "markdown",
-    ".html": "html",
-    ".css": "css",
-    ".js": "javascript",
-    ".ts": "typescript",
-    ".json": "json",
-    ".yaml": "yaml",
-    ".c": "c",
-    ".cpp": "cpp",
-    ".rs": "rust",
-    ".go": "go",
-    ".csv": "csv",
-    ".cu": "cuda",
-    ".jsx": "javascript",
-    ".tsx": "typescript"
+    "python": ".py",
+    "shell": ".sh",
+    "markdown": ".md",
+    "html": ".html",
+    "css": ".css",
+    "javascript": ".js",
+    "typescript": ".ts",
+    "json": ".json",
+    "yaml": ".yaml",
+    "c": ".c",
+    "cpp": ".cpp",
+    "rust": ".rs",
+    "go": ".go",
+    "csv": ".csv",
+    "cuda": ".cu",
+    "jsx": ".jsx",
+    "tsx": ".tsx"
 }
 
 language_comment_map = {
@@ -42,39 +42,48 @@ language_comment_map = {
     'tsx': '//'
 }
 
-def extract_code_blocks(markdown: str) -> List[Dict]:
-    """
-    Generic code-fence parser: captures 
-      ```<lang>\n<content>\n```
-    Returns a list of { "language": str, "content": str }
+def detect_language_from_content(content: str) -> Optional[str]:
+    """Try to detect language from code content."""
+    # Simple heuristics - could be expanded
+    indicators = {
+        'python': ['def ', 'import ', 'class ', 'if __name__'],
+        'javascript': ['function ', 'const ', 'let ', 'var '],
+        'typescript': ['interface ', 'type ', '<T>', ': string'],
+        'html': ['<!DOCTYPE', '<html', '<div', '<body'],
+        'css': ['{', '@media', '#', '.class'],
+        'shell': ['#!/bin/', 'echo ', 'export ', 'sudo '],
+        'rust': ['fn ', 'impl ', 'pub ', 'use '],
+        'go': ['func ', 'package ', 'import (', 'type '],
+    }
     
-    (We do not handle triple-backtick nesting or edge cases.)
-    """
+    for lang, patterns in indicators.items():
+        if any(pattern in content for pattern in patterns):
+            return lang
+    return None
+
+def extract_code_blocks(markdown: str) -> List[Dict]:
+    """Extract code blocks from markdown text."""
     code_pattern = re.compile(r"```(\w+)\n(.*?)\n```", re.DOTALL)
     matches = code_pattern.findall(markdown)
     blocks = []
     for language, code in matches:
-        blocks.append({"language": language, "content": code})
+        blocks.append({
+            "language": language,
+            "content": code.strip(),
+            "filename": None
+        })
     return blocks
 
 def fuzzy_find_filename(line: str) -> str:
-    """
-    Use a regex to find something that looks like a path or filename.
-    E.g. "src/components/NodeControls.tsx", "index.html", "main.py"...
-    """
+    """Find something that looks like a path or filename."""
     filename_pattern = re.compile(r'([^\s"\':]+(\.[^\s"\':]+)+)')
     matches = filename_pattern.findall(line)
-    # each match is a tuple, e.g. ("main.py", ".py")
     for full_match, _ in matches:
         return full_match
     return ""
 
 def extract_filename_from_codeblock(code: str, language: str) -> Optional[str]:
-    """
-    Inspect the first few lines of 'code' for a filename comment.
-    If found, return it; else None.
-    For CSS, we'll look for /* comment */. For others, we look for # or // prefix.
-    """
+    """Try to find filename in code block comments."""
     comment_prefix = language_comment_map.get(language, "#")
     lines = code.split('\n')
     max_lines_to_check = min(5, len(lines))
@@ -85,32 +94,25 @@ def extract_filename_from_codeblock(code: str, language: str) -> Optional[str]:
             continue
 
         if language == "css":
-            # We might see something like: /* filename.css */
             if line.startswith("/*") and line.endswith("*/"):
-                # remove the /* and */ 
                 content = line[2:-2].strip()
-                guessed = fuzzy_find_filename(content)
-                if guessed:
-                    return guessed
+                if filename := fuzzy_find_filename(content):
+                    return filename
         else:
-            # We might see a line with '#' or '//' as prefix
             if line.startswith(comment_prefix):
-                # remove just that prefix
-                cmt = line[len(comment_prefix):].strip()
-                guessed = fuzzy_find_filename(cmt)
-                if guessed:
-                    return guessed
+                content = line[len(comment_prefix):].strip()
+                if filename := fuzzy_find_filename(content):
+                    return filename
     return None
 
 def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
-    """
-    High-level utility: for each code block, we also attempt to guess a filename.
-    Returns a list of { language, content, filename }
-    """
+    """Parse markdown and extract code blocks with metadata."""
     blocks = extract_code_blocks(markdown)
-    for b in blocks:
-        lang = b["language"]
-        code = b["content"]
-        filename = extract_filename_from_codeblock(code, lang)
-        b["filename"] = filename
+    for i, block in enumerate(blocks):
+        block["index"] = i
+        if not block["filename"]:
+            block["filename"] = extract_filename_from_codeblock(
+                block["content"],
+                block["language"]
+            )
     return blocks

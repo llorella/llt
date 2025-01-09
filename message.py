@@ -5,7 +5,8 @@ import json
 from typing import Optional, Dict, List
 
 from plugins import plugin
-from utils.helpers import content_input, path_input, Colors, get_valid_index, list_input
+from utils.input_utils import path_input, get_valid_index, list_input
+from utils.colors import Colors
 
 
 class Message(Dict):
@@ -39,21 +40,19 @@ def write(messages: List[Message], args: Dict, index: int = -1)  -> List[Message
     os.makedirs(os.path.dirname(ll_path), exist_ok=True)
     with open(ll_path, "w") as file:
         json.dump(messages, file, indent=2)
-    Colors.print_colored(
-        f"Saved {len(messages)} messages to '{ll_path}'.", Colors.GREEN
-    )
+    if not args.non_interactive:
+        Colors.print_colored(
+            f"Saved {len(messages)} messages to '{ll_path}'.", Colors.GREEN
+        )
     args.load = ll_path
     return messages
 
 @plugin
 def prompt(messages: List[Message], args: Dict, index: int = -1)  -> List[Message]:
-    # split prompt by newline
-    # the prompt will have newline literals in it 
-    # so we need to split it by newline and join it back together
-        
     message = Message(role=args.role, content=args.prompt)
     messages.append(message)
-    Colors.print_colored("Added new prompt message.", Colors.GREEN)
+    if not args.non_interactive:
+        Colors.print_colored(f"Added new message to the conversation.", Colors.GREEN)
     return messages
 
 @plugin
@@ -68,8 +67,9 @@ def remove(
         if not getattr(args, "remove", None)
         else int(args.remove)
     )
-    removed_message = messages.pop(message_index)
-    Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
+    messages.pop(message_index)
+    if not args.non_interactive:
+        Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
     setattr(args, "remove", None)
     return messages
 
@@ -143,16 +143,6 @@ def insert(
     messages.insert(message_index, new_message)
     Colors.print_colored(
         f"Inserted new message at index {message_index + 1}.", Colors.GREEN
-    )
-    return messages
-
-@plugin
-def content(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
-    index = get_valid_index(messages, "modify content of", index)
-    new_content = content_input()
-    messages[index]["content"] = new_content
-    Colors.print_colored(
-        f"Modified content of message at index {index + 1}.", Colors.GREEN
     )
     return messages
 
