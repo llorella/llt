@@ -2,6 +2,7 @@
 
 import os
 import difflib
+import pyperclip
 
 def generate_diff(old_content: str, new_content: str, filename: str) -> str:
     """
@@ -50,6 +51,9 @@ def prompt_and_write_file(final_path: str, new_content: str, diff_text: str) -> 
         except Exception as e:
             print(f"Error writing '{final_path}': {e}")
             return False
+    elif user_input == 'c':
+        pyperclip.copy(new_content)
+        return False
     else:
         print(f"Skipped writing '{final_path}'.\n")
         return False

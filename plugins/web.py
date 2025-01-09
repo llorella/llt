@@ -190,8 +190,10 @@ def get_tags_for_type(content_type: str) -> List[str]:
 def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     """Plugin function to fetch and process URL content."""
     # Get URL from arguments or message content
-    args.url = args.url if args.url else messages[get_valid_index(messages, "fetch url from", index)]['content']
-    
+    if not args.url_fetch:
+        index = get_valid_index(messages, "fetch url from", index)
+
+    url = messages[index]["content"]
     # Handle tags based on args
     if hasattr(args, 'tags') and args.tags:
         if isinstance(args.tags, str):
@@ -206,7 +208,7 @@ def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Li
     
     # Process URL
     result = process_url(
-        url=args.url,
+        url=url,
         tags=tags,
         include_metadata=getattr(args, 'include_metadata', False)
     )
@@ -219,13 +221,13 @@ def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Li
         })
         
         llt_logger.log_info("URL content fetched and processed", {
-            "url": args.url,
+            "url": url,
             "tags_used": tags,
             "content_length": len(formatted_content),
             **metadata
         })
     
-    args.url = None
+    args.url_fetch = False
     return messages
 
 def main() -> int:

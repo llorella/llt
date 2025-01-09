@@ -19,7 +19,7 @@ def run_code_block(language: str, code: str, skip_check: bool = False) -> str:
         args = ["python3", "-c", code]
 
     if not skip_check:
-        user_input = input(f"Run {language} code? (y/N) ").strip().lower()
+        user_input = input(f"Code block:\n{code}\nRun {language} code? (y/N) ").strip().lower()
         if user_input != 'y':
             return "Skipped by user."
 
@@ -51,7 +51,7 @@ def execute_command(messages: List[Dict[str,Any]], args: Dict, index: int=-1) ->
     for block in blocks:
         lang = block["language"]
         code = block["content"]
-        output = run_code_block(lang, code, skip_check=args.get("non_interactive", False))
+        output = run_code_block(lang, code, skip_check=args.non_interactive)
         all_outputs.append(output)
 
     # summarize results
