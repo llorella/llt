@@ -17,7 +17,7 @@ from utils.md_parser import (
 from utils.diff import generate_diff, format_diff
 from utils.tempfile_manager import TempFileManager
 from utils.backup_manager import BackupManager
-from utils.helpers import encode_image_to_base64, content_input
+from utils.helpers import encode_image_to_base64, content_input, list_input
 from utils.gitignore import get_gitignore_patterns, should_ignore
 
 
@@ -68,7 +68,7 @@ def execute_code(code: str, language: str, timeout: int = 30) -> str:
 def execute_by_language(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """Execute code blocks of specified language."""
     msg_index = get_valid_index(messages, "execute code blocks from", index)
-    target_lang = getattr(args, 'lang', None) or input("Enter language to execute: ").strip()
+    target_lang = getattr(args, 'lang', None) or list_input(language_extension_map.keys(), "Enter a language to execute: ").strip()
     timeout = int(getattr(args, 'timeout', 30))
     
     results = []
@@ -262,12 +262,14 @@ def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         print("No messages to copy.")
         return messages
         
-    msg_index = get_valid_index(messages, "copy", index) if index != -1 else -1
+    if not args.non_interactive:
+        index = get_valid_index(messages, "copy", index)
+
     
     if getattr(args, 'blocks', False):
         lang_filter = getattr(args, 'lang', None)
         blocks = list(iter_blocks(
-            messages[msg_index],
+            messages[index],
             predicate=lambda b: not lang_filter or b["language"] == lang_filter
         ))
         if blocks:
@@ -277,7 +279,7 @@ def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         else:
             print("No matching code blocks found.")
     else:
-        pyperclip.copy(messages[msg_index]["content"])
+        pyperclip.copy(messages[index]["content"])
         print("Copied message to clipboard.")
         
     return messages
