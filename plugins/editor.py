@@ -90,7 +90,8 @@ def execute_by_language(messages: List[Dict], args: Dict, index: int = -1) -> Li
 
     if results:
         messages.append({
-            "role": "assistant",
+            "role": "llt",
+            "name": "execute",
             "content": "\n\n".join(results)
         })
     return messages
@@ -319,7 +320,7 @@ def process_file(
                         {"type": "text", "text": prompt},
                     ],
                 }, True
-            elif model.startswith("gpt-4"):
+            else:
                 return {
                     "role": role,
                     "content": [
@@ -332,8 +333,6 @@ def process_file(
                         },
                     ],
                 }, True
-            else:
-                return None, False
                 
         except Exception as e:
             print(f"Failed to process image {file_path}: {e}")
