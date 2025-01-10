@@ -4,6 +4,7 @@ import re
 from typing import List, Dict, Optional
 
 language_extension_map = {
+    "bash": ".sh",
     "python": ".py",
     "shell": ".sh",
     "markdown": ".md",
