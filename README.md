@@ -272,12 +272,12 @@ $LLT_PATH/
 
 ## Plugin Development
 
-Create new plugins by decorating functions with `@plugin`:
+Create new plugins by decorating functions with `@llt`:
 
 ```python
-from plugins import plugin
+from plugins import llt
 
-@plugin
+@llt
 def my_command(messages: List[Dict], args: Dict) -> List[Dict]:
     # Transform messages
     return messages

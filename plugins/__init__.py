@@ -2,28 +2,132 @@
 
 import os
 import importlib.util
-from typing import Callable, Dict
+from typing import Callable, Dict, Any
 from logger import llt_logger
+import argparse
+import re
 
-_plugins_registry: Dict[str, Callable] = {}
+_plugins_registry: Dict[str, Dict[str, Any]] = {}
 
-def plugin(fn: Callable) -> Callable:
+
+def llt(fn: Callable) -> Callable:
     """
-    Decorator to register a function as a plugin by name.
+    Decorator that registers a plugin by parsing its docstring.
+
+    Each docstring should contain lines in the format:
+
+        Description: ...
+        Type: ...
+        Default: ...
+        flag: ...
+        short: ...
+
+    Example:
+        @llt
+        def example(...):
+            \"\"\"
+            Description: Example plugin
+            Type: bool
+            Default: false
+            flag: example
+            short: e
+            \"\"\"
+            ...
+
+    We'll store these in _plugins_registry for later argument parsing and command mapping.
     """
-    _plugins_registry[fn.__name__] = fn
+    doc = fn.__doc__ or ""
+
+    desc_match = re.search(r"Description:\s*(.*)", doc)
+    type_match = re.search(r"Type:\s*(.*)", doc)
+    default_match = re.search(r"Default:\s*(.*)", doc)
+    flag_match = re.search(r"flag:\s*(.*)", doc)
+    short_match = re.search(r"short:\s*(.*)", doc)
+
+    description = desc_match.group(1).strip() if desc_match else fn.__name__
+    arg_type = type_match.group(1).strip() if type_match else None
+    default = default_match.group(1).strip() if default_match else None
+    flag = flag_match.group(1).strip() if flag_match else fn.__name__
+    short = short_match.group(1).strip() if short_match else None
+
+    _plugins_registry[fn.__name__] = {
+        'function': fn,
+        'description': description,
+        'type': arg_type,
+        'default': default if default != "None" else None,
+        'flag': flag,
+        'short': short
+    }
     return fn
 
-def plugins() -> Dict[str, Callable]:
+
+def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
     """
-    Return the dictionary of all registered plugin functions.
+    Create argparse flags from the collected plugin registry.
+
+    We read the docstring-derived metadata: flag, short, type, default, description.
     """
-    return _plugins_registry
+    used_flags = set()
+    used_shorts = set()
+
+    for plugin_name, info in _plugins_registry.items():
+        flag_str = info['flag']
+        if info['type'] is None:
+            continue
+        short_str = info['short']
+        description = info['description']
+        arg_type = info['type']
+        default_val = info['default']
+
+        # Ensure main (long) flag is unique
+        if flag_str in used_flags:
+            llt_logger.warning(f"Duplicate plugin flag '{flag_str}' in {plugin_name}")
+        used_flags.add(flag_str)
+
+        # Potentially add short flag if it's not empty
+        cli_flags = [f"--{flag_str}"]
+        if short_str:
+            if short_str in used_shorts:
+                llt_logger.warning(f"Duplicate short flag '-{short_str}' in {plugin_name}")
+            else:
+                cli_flags.append(f"-{short_str}")
+            used_shorts.add(short_str)
+
+        # Convert 'type' to an actual Python type / action
+        # Check if flags are already present in parser
+        if arg_type in ("bool", "boolean"):
+            parser.add_argument(
+                *cli_flags,
+                action='store_true',
+                default=(default_val.lower() == "true"),
+                help=description
+            )
+        elif arg_type in ("int", "float"):
+            py_type = int if arg_type == "int" else float
+            # handle default if possible
+            try:
+                default_conv = py_type(default_val)
+            except ValueError:
+                default_conv = None if not default_val else default_val
+            parser.add_argument(
+                *cli_flags,
+                type=py_type,
+                default=default_conv,
+                help=description
+            )
+        else:
+            # treat as string
+            parser.add_argument(
+                *cli_flags,
+                type=str,
+                default=default_val if default_val else None,
+                help=description
+            )
 
 def load_plugins(plugin_dir: str) -> None:
     """
     Dynamically load Python scripts from 'plugin_dir'.
-    Each script can import @plugin from here to register functions.
+    Each script can import @llt from here to register functions.
     """
     if not os.path.isdir(plugin_dir):
         return
@@ -40,9 +144,11 @@ def load_plugins(plugin_dir: str) -> None:
             except ImportError as e:
                 llt_logger.log_error(f"Failed to import {module_name}", {"error": str(e)})
 
+
 def help(messages, args, index):
     print(', '.join(_plugins_registry.keys()))
     return messages
+
 
 def quit(messages, args, index):
     exit(0)
@@ -51,18 +157,19 @@ def init_cmd_map() -> Dict[str, Callable]:
     """Initialize a command map with plugin commands and their abbreviations."""
     n_abbv = lambda s, n=1: s[:n].lower()
     cmd_map = {}
-    for cmd_name, fn in _plugins_registry.items():
+    for _, info in _plugins_registry.items():
+        cmd_name = info['flag']
         if cmd_name not in cmd_map:
-            cmd_map[cmd_name] = fn
+            cmd_map[cmd_name] = info['function']
         if n_abbv(cmd_name) not in cmd_map:
-            cmd_map[n_abbv(cmd_name)] = fn
+            cmd_map[n_abbv(cmd_name)] = info['function']
         elif len(cmd_name) > 2 and n_abbv(cmd_name, 2) not in cmd_map:
-            cmd_map[n_abbv(cmd_name, 2)] = fn
+            cmd_map[n_abbv(cmd_name, 2)] = info['function']
         seps = ["-", "_"]
         for sep in seps:
             split_cmd = cmd_name.split(sep)
             if split_cmd:
-                cmd_map[split_cmd[0]] = fn
+                cmd_map[split_cmd[0]] = info['function']
                 
     cmd_map["h"] = cmd_map["help"] = help
     cmd_map["q"] = cmd_map["quit"] = quit

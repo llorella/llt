@@ -1,12 +1,12 @@
 # plugins/editor.py
 import os
 import subprocess
-import pyperclip # type: ignore
+import pyperclip  # type: ignore
 import json
-from typing import List, Dict, Optional, Callable, Iterator, Union, Tuple
+from typing import List, Dict, Optional, Callable, Iterator, Union
 from pathlib import Path
 
-from plugins import plugin
+from plugins import llt
 from utils.input_utils import path_input, get_valid_index, confirm_action
 from utils.colors import Colors
 from utils.md_parser import (
@@ -18,25 +18,30 @@ from utils.diff import generate_diff, format_diff
 from utils.tempfile_manager import TempFileManager
 from utils.backup_manager import BackupManager
 from utils.helpers import encode_image_to_base64, content_input, list_input
-from utils.gitignore import get_gitignore_patterns, should_ignore
-
+from utils.file_operations import get_project_dir
 
 temp_manager = TempFileManager()
 backup_manager = BackupManager()
+
 
 def iter_blocks(
     message: Dict,
     predicate: Optional[Callable] = None,
     transform: Optional[Callable] = None
 ) -> Iterator[Dict]:
-    """Iterate through code blocks with optional filtering and transformation."""
+    """
+    Iterate through code blocks in a given message with optional filtering/transform.
+    """
     blocks = parse_markdown_for_codeblocks(message["content"])
     for block in blocks:
-        if predicate is None or predicate(block):
+        if not predicate or predicate(block):
             yield transform(block) if transform else block
 
+
 def execute_code(code: str, language: str, timeout: int = 30) -> str:
-    """Execute code with safety measures."""
+    """
+    Execute code in a subprocess, capturing stdout/stderr.
+    """
     runners = {
         "python": ["python3", "-c"],
         "bash": ["bash", "-c"],
@@ -44,10 +49,9 @@ def execute_code(code: str, language: str, timeout: int = 30) -> str:
         "ruby": ["ruby", "-e"],
         "shell": ["bash", "-c"]
     }
-    
     if language not in runners:
         raise ValueError(f"Unsupported language: {language}")
-    
+
     with temp_manager.temp_file(suffix=f".{language}", content=code) as temp_path:
         try:
             proc = subprocess.run(
@@ -64,26 +68,34 @@ def execute_code(code: str, language: str, timeout: int = 30) -> str:
         except subprocess.TimeoutExpired:
             return f"Execution timed out after {timeout} seconds"
 
-@plugin
-def execute_by_language(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Execute code blocks of specified language."""
+
+@llt
+def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+    """
+    Description: Execute code blocks by language
+    Type: bool
+    Default: false
+    flag: execute
+    short:
+    """
     msg_index = get_valid_index(messages, "execute code blocks from", index)
-    target_lang = getattr(args, 'lang', None) or list_input(language_extension_map.keys(), "Enter a language to execute: ").strip()
+    target_lang = getattr(args, 'lang', None) or list_input(language_extension_map.keys(), "Enter a language: ").strip()
     timeout = int(getattr(args, 'timeout', 30))
-    
+
     results = []
     blocks = iter_blocks(
         messages[msg_index],
         predicate=lambda b: b["language"] == target_lang
     )
-    
+
     for block in blocks:
         print(f"\nCode block {block['index'] + 1}:")
         Colors.print_colored(block["content"], Colors.CYAN)
-        
+
         if getattr(args, 'all', False) or confirm_action("Execute this block?"):
             try:
-                if output := execute_code(block["content"], target_lang, timeout):
+                output = execute_code(block["content"], target_lang, timeout)
+                if output:
                     results.append(f"Output of block {block['index'] + 1}:\n{output}")
             except Exception as e:
                 results.append(f"Error in block {block['index'] + 1}: {str(e)}")
@@ -96,9 +108,16 @@ def execute_by_language(messages: List[Dict], args: Dict, index: int = -1) -> Li
         })
     return messages
 
-@plugin
-def apply_changes(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Write code blocks to files with smart handling."""
+
+@llt
+def edit(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+    """
+    Description: Edit code blocks in messages at project root path
+    Type: bool
+    Default: false
+    flag: edit
+    short:
+    """
     msg_index = get_valid_index(messages, "write code blocks from", index)
     lang_filter = getattr(args, 'lang', None)
     create_backups = getattr(args, 'backup', True)
@@ -107,35 +126,30 @@ def apply_changes(messages: List[Dict], args: Dict, index: int = -1) -> List[Dic
 
     modified = []
     skipped = []
-    
+
     for block in iter_blocks(
         messages[msg_index],
         predicate=lambda b: not lang_filter or b["language"] == lang_filter
     ):
         print(f"\n{block['language']} block:")
         Colors.print_colored(block["content"], Colors.CYAN)
-        
+
         suggested_ext = language_extension_map.get(block["language"], ".txt")
         default_name = block["filename"] or f"block_{block['index']}{suggested_ext}"
-        
-        if not force:
-            filename = path_input(default_name)
-        else:
-            filename = default_name
-            
+
+        filename = path_input(default_name, get_project_dir(args))
         filepath = Path(filename)
-        
-        # Handle existing files
+
         if filepath.exists():
             if create_backups:
                 backup_manager.create_backup(str(filepath))
-                
+
             if show_diff:
                 old_content = filepath.read_text()
                 diff = generate_diff(old_content, block["content"])
                 print("\nChanges to be applied:")
                 print(format_diff(diff))
-                
+
             if force or confirm_action("Write changes?"):
                 filepath.parent.mkdir(parents=True, exist_ok=True)
                 filepath.write_text(block["content"])
@@ -164,24 +178,31 @@ def apply_changes(messages: List[Dict], args: Dict, index: int = -1) -> List[Dic
     })
     return messages
 
-@plugin
+
+@llt
 def extract_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Extract and manipulate code blocks."""
+    """
+    Description: Extract and manipulate code blocks
+    Type: bool
+    Default: false
+    flag: extract_blocks
+    short:
+    """
     msg_index = get_valid_index(messages, "extract blocks from", index)
     lang_filter = getattr(args, 'lang', None)
     should_detect = getattr(args, 'detect', True)
-    
+
     def process_block(block: Dict) -> Dict:
         if should_detect and not block["language"]:
             block["language"] = detect_language_from_content(block["content"]) or "text"
         return block
-    
+
     blocks = list(iter_blocks(
         messages[msg_index],
         predicate=lambda b: not lang_filter or b["language"] == lang_filter,
         transform=process_block
     ))
-    
+
     if not blocks:
         messages.append({
             "role": "assistant",
@@ -190,7 +211,6 @@ def extract_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Di
         return messages
 
     output_format = getattr(args, 'format', 'markdown')
-    
     if getattr(args, 'merge', False):
         merged = "\n\n".join(b["content"] for b in blocks)
         if output_format == 'json':
@@ -214,59 +234,79 @@ def extract_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Di
             )
         else:
             content = "\n\n".join(b["content"] for b in blocks)
-    
+
     messages.append({
         "role": "assistant",
         "content": content
     })
     return messages
 
-@plugin
+
+@llt
 def content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Edit message content in external editor."""
+    """
+    Description: Edit message content in external editor
+    Type: bool
+    Default: false
+    flag: content
+    short:
+    """
     if not messages:
         print("No messages to edit.")
         return messages
-        
+
     msg_index = get_valid_index(messages, "edit content of", index)
     editor = getattr(args, 'editor', None) or os.environ.get("EDITOR", "vim")
-    
+
     with temp_manager.temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
         try:
             subprocess.run([editor, temp_path], check=True)
             with open(temp_path) as f:
                 new_content = f.read()
-                
+
             if new_content != messages[msg_index]["content"]:
                 if getattr(args, 'backup', True):
                     backup_manager.create_backup(temp_path)
                 messages[msg_index]["content"] = new_content
-                
+
         except Exception as e:
             Colors.print_colored(f"Error editing content: {e}", Colors.RED)
-            
+
     return messages
 
-@plugin
+
+@llt
 def paste(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Paste clipboard content as new user message."""
+    """
+    Description: Paste clipboard content as new user message
+    Type: bool
+    Default: false
+    flag: paste
+    short:
+    """
     messages.append({
         "role": "user",
         "content": pyperclip.paste()
     })
     return messages
 
-@plugin
+
+@llt
 def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Copy message content to clipboard."""
+    """
+    Description: Copy message content to clipboard
+    Type: bool
+    Default: false
+    flag: copy
+    short:
+    """
     if not messages:
         print("No messages to copy.")
         return messages
-        
+
     if not args.non_interactive:
         index = get_valid_index(messages, "copy", index)
 
-    
     if getattr(args, 'blocks', False):
         lang_filter = getattr(args, 'lang', None)
         blocks = list(iter_blocks(
@@ -282,128 +322,74 @@ def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     else:
         pyperclip.copy(messages[index]["content"])
         print("Copied message to clipboard.")
-        
+
     return messages
 
-def process_file(
-    file_path: Union[str, Path], 
-    model: str,
-    prompt: str = "",
-    role: str = "user"
-) -> Tuple[Dict, bool]:
-    """
-    Process a file and return appropriate message format based on file type.
-    Returns (message_dict, success_bool)
-    """
-    file_path = Path(file_path)
-    if not file_path.exists():
-        return None, False
 
-    ext = file_path.suffix.lower()
-    
-    if ext in {".png", ".jpg", ".jpeg", ".gif", ".webp"}:
-        try:
-            encoded_image = encode_image_to_base64(str(file_path))
-            
-            if model.startswith("claude"):
-                return {
-                    "role": role,
-                    "content": [
-                        {
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": f"image/{ext[1:]}",
-                                "data": encoded_image,
-                            },
-                        },
-                        {"type": "text", "text": prompt},
-                    ],
-                }, True
-            else:
-                return {
-                    "role": role,
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/{ext[1:]};base64,{encoded_image}"
-                            },
-                        },
-                    ],
-                }, True
-                
-        except Exception as e:
-            print(f"Failed to process image {file_path}: {e}")
-            return None, False
-    
-    # Handle text files
-    try:
-        content = file_path.read_text()
-        if ext in language_extension_map:
-            content = f"# {file_path.name}\n```{language_extension_map[ext]}\n{content}\n```"
-        return {"role": role, "content": content}, True
-    except Exception as e:
-        print(f"Failed to read file {file_path}: {e}")
-        return None, False
-
-@plugin
+@llt
 def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
-    Enhanced file inclusion with support for:
-    - Multiple files (glob patterns)
-    - .gitignore respect
-    - Image handling for specific models
-    - Automatic language detection
-    - Directory traversal
+    Description: Include file content (including images) into the conversation
+    Type: string
+    Default: None
+    flag: file
+    short: f
     """
-    paths = []
-    if getattr(args, 'file', None):
-        paths = [Path(args.file)]
-    elif getattr(args, 'glob', None):
-        paths = list(Path().glob(args.glob))
+    if not args.file or not args.non_interactive:
+        file_path = path_input(args.file, os.getcwd())
     else:
-        file_path = path_input(None, os.getcwd())
-        paths = [Path(file_path)]
+        file_path = args.file
 
-    if not paths:
-        print("No files specified")
+    if not os.path.exists(file_path):
+        print(f"Error: File not found at {file_path}")
         return messages
 
-    ignore_patterns = None
-    if getattr(args, 'respect_gitignore', True):
-        ignore_patterns = get_gitignore_patterns()
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() in [".png", ".jpeg", ".jpg", ".gif", ".webp"]:
+        prompt = args.prompt if args.non_interactive else content_input()
+        try:
+            encoded_image = encode_image_to_base64(file_path)
+        except Exception as e:
+            print(f"Failed to encode image: {e}")
+            return messages
 
-    role = getattr(args, 'role', 'user')
-    # for image handling differences
-    model = getattr(args, 'model', 'claude')
-    prompt = getattr(args, 'prompt', '') if getattr(args, 'non_interactive', False) else content_input()
-    
-    successful = 0
-    failed = 0
+        if args.model.startswith("claude"):
+            messages.append({
+                "role": "user",
+                "content": [
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": f"image/{ext[1:].lower()}",
+                            "data": encoded_image,
+                        },
+                    },
+                    {"type": "text", "text": prompt},
+                ],
+            })
+        elif args.model.startswith("gpt-4"):
+            messages.append({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:image/{ext[1:].lower()};base64,{encoded_image}"
+                        },
+                    },
+                ],
+            })
+        else:
+            print("Unsupported model for image inclusion.")
+            return messages
+    else:
+        with open(file_path, "r") as file:
+            data = file.read()
+        if ext.lower() in language_extension_map:
+            data = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{data}\n```"
+        messages.append({"role": args.role, "content": data})
 
-    for path in paths:
-        if ignore_patterns and should_ignore(str(path), ignore_patterns):
-            print(f"Skipping {path} (matches gitignore)")
-            continue
-
-        if path.is_dir() and getattr(args, 'recursive', False):
-            for file_path in path.rglob('*'):
-                if file_path.is_file():
-                    message, success = process_file(file_path, model, prompt, role)
-                    if success:
-                        messages.append(message)
-                        successful += 1
-                    else:
-                        failed += 1
-        elif path.is_file():
-            message, success = process_file(path, model, prompt, role)
-            if success:
-                messages.append(message)
-                successful += 1
-            else:
-                failed += 1
-
-    print(f"Processed {successful} files successfully, {failed} failed")
+    setattr(args, 'file', None)
     return messages

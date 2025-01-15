@@ -3,6 +3,7 @@ from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 from utils.colors import Colors
 from utils.diff import generate_diff, format_diff
+from utils.input_utils import path_input
 import pyperclip
 
 
@@ -14,20 +15,18 @@ def get_project_dir(args: Dict, default_name: str = "untitled") -> str:
         args: Command arguments including exec_dir and load info
         default_name: Default directory name if no load path
     """
-    if not args.get('load'):
-        return os.path.join(args.get('exec_dir', '.'), default_name)
     
-    ll_dir_abs = os.path.abspath(args.get('ll_dir', '.'))
-    load_abs = os.path.abspath(args.get('load'))
+    ll_dir_abs = os.path.abspath(args.ll_dir)
+    load_abs = os.path.abspath(args.load)
     rel = os.path.relpath(load_abs, ll_dir_abs)
     base, ext = os.path.splitext(rel)
-    
-    return os.path.join(args.get('exec_dir', '.'), base if ext == ".ll" else rel)
+    project_dir = path_input(os.path.join(args.exec_dir, rel or os.getcwd()), args.exec_dir)
+    return project_dir
 
 def read_file_content(filepath: str) -> Optional[str]:
     """Safely read file content."""
     try:
-        with open(filepath, 'r', encoding='utf-8') as f:
+        with open(filepath, 'r', encoding='utf-8') as f:        
             return f.read()
     except Exception as e:
         Colors.print_colored(f"Error reading file {filepath}: {e}", Colors.RED)

@@ -2,37 +2,19 @@
 # main.py
 
 import os
+import sys
 import argparse
 import traceback
-import argcomplete
 from typing import Dict, Callable
 
 from logger import llt_logger
 from utils.helpers import Colors, llt_input
-from plugins import plugins, load_plugins  # Our plugin registry + dynamic loading
-"""
-Arg: --apply_changes
-Short: -a
-Help: Make edits to files from messages. 
-Type: string
-Default: untitled
-"""
-"""
-load, ll: string - name in ll space
-files, f: string of whitespace sep pathnames
-
-
-all bool flags can be string inputs that check 
-"""
-
+from plugins import load_plugins, add_plugin_arguments, _plugins_registry  # Our plugin registry + dynamic loading
 
 def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="llt, the little language terminal")
 
     # Common arguments
-    parser.add_argument('--load', '--ll', '-l', type=str, help="Conversation file (JSON)", default=None)
-    parser.add_argument('--file', '-f', type=str, help="A file path for code or data.", default=None)
-    parser.add_argument('--prompt', '-p', type=str, help="Prompt text", default=None)
     parser.add_argument('--role', '-r', type=str, help="Specify role (user, system, etc.)", default="user")
     parser.add_argument('--model', '-m', type=str, help="Which LLM model to use", default="deepseek-chat")
     parser.add_argument('--temperature', '-t', type=float, help="Sampling temperature", default=0.9)
@@ -40,34 +22,14 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--logprobs', type=int, help="Include logprobs in completion", default=0)
     parser.add_argument('--top_p', type=float, help="Top-p sampling", default=1.0)
 
-    # Directories
     parser.add_argument('--cmd_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'cmd'))
     parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'exec'))
     parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'll/'))
 
-    # Interactive / Non-interactive
     parser.add_argument('--non_interactive', '-n', action='store_true', 
                         help="Run in non-interactive mode.")
     
-    parser.add_argument('--attach', type=str, help="Conversation file (JSON) to attach.", default=None)
-
-
-    # Plugin-related flags (direct calls)
-    parser.add_argument('--complete', '-c', action='store_true', help="Call 'complete' plugin on last message")
-    parser.add_argument('--paste', action='store_true', help="Paste clipboard buffer into prompt.")
-    parser.add_argument('--remove', action='store_true', help="Remove latest message.")
-    parser.add_argument('--write', type=str, help="Write conversation to a file")
-    parser.add_argument('--detach', action='store_true', help="Detach last message")
-    parser.add_argument('--fold', action='store_true', help="Fold consecutive messages of same role")
-    parser.add_argument('--execute', action='store_true', help="Execute code blocks in last message")
-    parser.add_argument('--view', action='store_true', help="View the last message")
-    parser.add_argument('--email', action='store_true', help="Send an email with the last message")
-    parser.add_argument('--url_fetch', action='store_true', help="Fetch content of url from last message.")
-    parser.add_argument('--tags', type=str, help="HTML tags to fetch from URL", default='content')
-    parser.add_argument('--xml_wrap', '--xml', type=str, help="Wrap last message in an XML tag")
-    parser.add_argument('--embeddings', type=str, help="Path to embeddings DB (csv) or dir for generating embeddings")
-
-    argcomplete.autocomplete(parser)
+    add_plugin_arguments(parser)
     return parser.parse_args()
 
 
@@ -99,7 +61,6 @@ def display_greeting(username: str, args: argparse.Namespace) -> None:
 
 def llt_shell_log(cmd: str) -> None:
     """Log shell commands to a log file."""
-    import sys
     llt_path = os.getenv("LLT_PATH", "")
     if not llt_path:
         return
@@ -109,41 +70,33 @@ def llt_shell_log(cmd: str) -> None:
             logfile.write(f"llt> {cmd}\n")
     except Exception as e:
         Colors.print_colored(f"Failed to log shell command '{cmd}': {e}", Colors.RED)
-        
 
-# by default, every plugin has a string flag
 
 def run_startup_plugins(messages: list, args: argparse.Namespace, cmd_map: Dict[str, Callable]) -> list:
     """
-    Map certain CLI flags to plugins. 
-    E.g. if args.complete is True, call the 'complete' plugin. 
-    This is more flexible than a hard-coded list.
-    """
-    flag_to_plugin_call = [
-        # (boolean_flag_or_value, plugin_name)
-        (args.load, 'load'),
-        (args.paste, 'paste'),
-        (args.remove, 'remove'),
-        (args.attach, 'attach'),
-        (args.file, 'file'),
-        (args.prompt, 'prompt'),
-        (args.url_fetch, 'url_fetch'),     # or "url" plugin
-        (args.xml_wrap, 'xml_wrap'),
-        (args.fold, 'fold'),
-        (args.complete, 'complete'),
-        (args.write, 'write'),       # if write is non-empty string
-        (args.detach, 'detach'),
-        (args.execute, 'execute'),   # or "execute_command" if that’s your plugin name
-        (args.view, 'view'),
-        (args.email, 'email'),       # if you have a plugin for emailing
-        (args.embeddings, 'embeddings'),  # or "embeddings" plugin
-        (args.non_interactive, 'quit')
-    ]
-
-    for flag_value, plugin_name in flag_to_plugin_call:
-        if flag_value:
-            if plugin_name in cmd_map:
-                messages = cmd_map[plugin_name](messages, args, index=-1)
+    Run plugins based on their corresponding CLI flags in the order they were specified.
+    """    
+    argv = sys.argv[1:]
+    
+    plugins_to_run = []
+    for arg in argv:
+        arg = arg.lstrip('-') 
+        for plugin_info in _plugins_registry.values():
+            flag = plugin_info['flag']
+            if flag is None or not hasattr(args, flag):
+                continue
+            if arg == flag or arg == flag[0]:
+                attribute = getattr(args, flag)
+                if isinstance(attribute, bool):
+                    should_run = attribute
+                else:
+                    should_run = attribute is not None
+                if should_run:
+                    plugins_to_run.append(plugin_info['function'])
+    
+    for fn in plugins_to_run:
+        messages = fn(messages, args, index=-1)
+    
     return messages
 
 
@@ -156,7 +109,6 @@ def llt() -> None:
     from plugins import init_cmd_map
     cmd_map = init_cmd_map()
 
-    # Now call the startup plugins based on CLI flags
     messages = run_startup_plugins(messages, args, cmd_map)
 
     from utils.helpers import Colors
@@ -169,7 +121,6 @@ def llt() -> None:
     print(user_greeting(os.getenv('USER', 'User'), args))
 
     if args.non_interactive:
-        # If in batch mode, we won't enter the interactive loop
         return
 
     while True:

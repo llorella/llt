@@ -2,14 +2,25 @@
 *
 
 # explicitly include the files you want to track
-!plugins/*
+!plugins/completion.py
+!plugins/editor.py
+!plugins/web.py
+!plugins/embeddings.py
+!plugins/gmail.py
+!plugins/sugar.py
+!plugins/__init__.py
 !main.py
 !message.py
-!utils/*
-#!plugins/text_editor.py
+!utils/file_operations.py
+!utils/input_utils.py
+!utils/helpers.py
+!utils/colors.py
+!utils/diff.py
+!utils/md_parser.py
+!utils/tempfile_manager.py
+!utils/backup_manager.py
+!utils/file_diff.py
+
 !README.md
 !LICENSE
 !requirements.txt
-#!plugins/log_viewer.py
-#!plugins/protocol.py
-#!embedding_utils

@@ -12,7 +12,7 @@ import numpy as np
 import fnmatch
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
-from plugins import plugin
+from plugins import llt
 from utils.helpers import Colors, path_input, get_valid_index
 from utils.md_parser import language_extension_map
 
@@ -79,7 +79,7 @@ def should_ignore(path: Path, patterns: List[str], project_dir: str) -> bool:
     
     return False
 
-@plugin
+@llt
 def embeddings(messages: List[Dict], args: Dict, index: int=-1) -> List[Dict]:
     """
     Generic embeddings plugin that:
@@ -399,7 +399,7 @@ def get_embedding(text, model="text-embedding-ada-002"):
     response_data = json.loads(response.json())
     return response_data.get("data")[0].get("embedding")
 
-@plugin
+@llt
 def lookup_embeddings(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
     embeddings_file = os.path.join(args.exec_dir, args.embeddings or "embeddings.csv")
     if not os.path.exists(embeddings_file):
