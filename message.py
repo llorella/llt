@@ -19,18 +19,21 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     """
     Description: Load ll file containing conversation
     Type: string
-    Default: None
+    Default: default.ll
     flag: load
     short: ll
     """
-    if not args.load or not args.non_interactive:
+    if not args.non_interactive:
         ll_path = path_input(args.load, args.ll_dir)
     else:
         ll_path = os.path.join(args.ll_dir, args.load)
 
+    os.makedirs(os.path.dirname(ll_path), exist_ok=True)
+
     if os.path.exists(ll_path):
         with open(ll_path, 'r') as file:
             messages = json.load(file)
+
     if not args.non_interactive:
         Colors.print_colored(f"Loaded {len(messages)} messages from '{ll_path}'.", Colors.GREEN)
 
@@ -50,10 +53,12 @@ def write(messages: List[Message], args: Dict, index: int = -1) -> List[Message]
     if args.write == ".":
         # if write is "." then write to the same file as load
         args.write = args.load
-    if not args.non_interactive or not args.write:
-        ww_path = path_input(args.write, args.ll_dir)
+    if not args.non_interactive and not args.write:
+        ww_path = path_input(args.load, args.ll_dir)
     else:
-        ww_path = args.write
+        ww_path = os.path.join(args.ll_dir, args.write)
+
+    os.makedirs(os.path.dirname(ww_path), exist_ok=True)
 
     with open(ww_path, "w") as file:
         json.dump(messages, file, indent=2)

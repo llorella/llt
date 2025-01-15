@@ -102,8 +102,7 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
 
     if results:
         messages.append({
-            "role": "llt",
-            "name": "execute",
+            "role": "user",
             "content": "\n\n".join(results)
         })
     return messages
@@ -173,7 +172,7 @@ def edit(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         summary.extend(f"  - {f}" for f in skipped)
 
     messages.append({
-        "role": "assistant",
+        "role": args.role,
         "content": "\n".join(summary)
     })
     return messages
@@ -205,7 +204,7 @@ def extract_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Di
 
     if not blocks:
         messages.append({
-            "role": "assistant",
+            "role": args.role,
             "content": "No matching blocks found."
         })
         return messages
@@ -236,7 +235,7 @@ def extract_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Di
             content = "\n\n".join(b["content"] for b in blocks)
 
     messages.append({
-        "role": "assistant",
+        "role": args.role,
         "content": content
     })
     return messages
