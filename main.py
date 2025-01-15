@@ -26,6 +26,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'exec'))
     parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'll/'))
 
+    parser.add_argument('--tools', action='store_true', help="Enable tool usage calls.")
     parser.add_argument('--non_interactive', '-n', action='store_true', 
                         help="Run in non-interactive mode.")
     

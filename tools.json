@@ -1,0 +1,205 @@
+{
+  "name": "llt",
+  "description": "Terminal tool for managing language model conversations with plugin commands",
+  "functions": {
+    "load": {
+      "description": "Load conversation from an ll file into current session",
+      "use_when": [
+        "Starting a new session with existing conversation",
+        "Loading saved conversation state",
+        "Importing previous chat history",
+        "Changing conversation context"
+      ],
+      "parameters": {
+        "file": "string, path to .ll file to load",
+        "non_interactive": "boolean, skip confirmation prompts"
+      }
+    },
+    "write": {
+      "description": "Save current conversation to an ll file", 
+      "use_when": [
+        "Saving conversation progress",
+        "Backing up important discussions",
+        "Exporting conversation state"
+      ],
+      "parameters": {
+        "file": "string, path where to save .ll file",
+        "non_interactive": "boolean, skip confirmation prompts"
+      }
+    },
+    "edit": {
+      "description": "Transform code blocks with change tracking",
+      "use_when": [
+        "Modifying code in context",
+        "Refining generated code",
+        "Recording code evolution",
+        "Creating code patterns"
+      ],
+      "parameters": {
+        "lang": "string, language filter",
+        "backup": "boolean, create backups",
+        "diff": "boolean, show changes",
+        "track": "boolean, record edit history"
+      }
+    },
+    "execute": {
+      "description": "Transform conversation through code execution",
+      "use_when": [
+        "Running code in conversation context",
+        "Testing generated solutions",
+        "Creating executable examples",
+        "Building conversation tools"
+      ],
+      "parameters": {
+        "lang": "string, language to execute",
+        "timeout": "integer, execution timeout seconds",
+        "env": "object, environment variables",
+        "context": "boolean, preserve execution context",
+        "sandbox": "string (docker|venv|none), execution environment"
+      }
+    },
+    "extract_blocks": {
+      "description": "Extract and manipulate code blocks from messages",
+      "use_when": [
+        "Collecting all code examples",
+        "Separating code from discussion",
+        "Organizing code snippets"
+      ],
+      "parameters": {
+        "lang": "string, filter by programming language",
+        "detect": "boolean, auto-detect languages",
+        "format": "string (markdown|json), output format",
+        "merge": "boolean, combine extracted blocks"
+      }
+    },
+    "url_fetch": {
+      "description": "Fetch and process content from URLs",
+      "use_when": [
+        "Including web documentation",
+        "Referencing online resources",
+        "Importing web content"
+      ],
+      "parameters": {
+        "tags": "string/array, HTML elements to extract",
+        "include_metadata": "boolean, include page metadata",
+        "content_type": "string (code|text|structure|lists|tables)"
+      }
+    },
+    "file": {
+      "description": "Include file content or images into conversation",
+      "use_when": [
+        "Including local file content",
+        "Adding images to conversation",
+        "Importing code files"
+      ],
+      "parameters": {
+        "file": "string, path to file",
+        "role": "string (user|system|assistant|tool)",
+        "prompt": "string, text to accompany image files"
+      }
+    },
+    "remove": {
+      "description": "Remove a message from conversation",
+      "use_when": [
+        "Deleting unwanted messages",
+        "Cleaning up conversation",
+        "Removing test messages"
+      ],
+      "parameters": {
+        "index": "integer, message index to remove"
+      }
+    },
+    "cut": {
+      "description": "Extract messages within index range",
+      "use_when": [
+        "Selecting conversation segments",
+        "Extracting relevant portions",
+        "Splitting conversations"
+      ],
+      "parameters": {
+        "start": "integer, start index",
+        "end": "integer, end index"
+      }
+    },
+    "paste": {
+      "description": "Insert clipboard content as new message",
+      "use_when": [
+        "Adding copied content",
+        "Importing external text",
+        "Quick content insertion"
+      ],
+      "parameters": {
+        "role": "string, role for new message"
+      }
+    },
+    "copy": {
+      "description": "Copy message content to clipboard",
+      "use_when": [
+        "Saving message content",
+        "Extracting message text",
+        "Sharing conversation parts"
+      ],
+      "parameters": {
+        "index": "integer, message to copy",
+        "blocks": "boolean, copy only code blocks",
+        "lang": "string, filter code blocks by language"
+      }
+    },
+    "role": {
+      "description": "Change role of existing message",
+      "use_when": [
+        "Correcting message roles",
+        "Changing message attribution",
+        "Adjusting conversation structure"
+      ],
+      "parameters": {
+        "index": "integer, message to modify",
+        "role": "string (user|assistant|system|tool)"
+      }
+    },
+    "complete": {
+      "description": "Generate a completion from the LLM",
+      "use_when": [
+        "Getting AI responses",
+        "Generating completions",
+        "Interacting with the model"
+      ],
+      "parameters": {
+        "model": "string, which LLM model to use",
+        "temperature": "float, sampling temperature",
+        "max_tokens": "integer, max tokens to generate"
+      }
+    },
+    "get_args": {
+      "description": "Display current arguments in a formatted way",
+      "use_when": [
+        "Checking current settings",
+        "Viewing configuration",
+        "Inspecting arguments"
+      ],
+      "parameters": {}
+    },
+    "screenshot": {
+      "description": "Capture and attach screen content to conversation",
+      "use_when": [
+        "Including visual context",
+        "Documenting UI/UX",
+        "Capturing temporal state",
+        "Creating visual references"
+      ],
+      "parameters": {
+        "mode": "string (window|region|display|active), capture mode",
+        "format": "string (png|jpg|gif), output format",
+        "quality": "integer (1-100), image quality",
+        "delay": "float, capture delay in seconds",
+        "highlight": "string, highlight pattern/region",
+        "animate": "boolean, create animation",
+        "duration": "float, animation duration",
+        "fps": "integer, frames per second",
+        "crop": "string (x1,y1,x2,y2), crop coordinates",
+        "follow": "boolean, follow mouse/window",
+        "audio": "boolean, include audio",
+        "compress": "boolean, optimize file size"
+      }
+    }
+}}

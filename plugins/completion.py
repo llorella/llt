@@ -106,41 +106,116 @@ def send_request(
 
 def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Example for using the Anthropic python client for streaming completions.
+    Use the Anthropic python client for streaming completions with tool support.
     """
+    print("Entering get_anthropic_completion")
     anthropic_client = anthropic.Client()
-
+    print(f"Created anthropic client")
+    
+    # Extract system prompt if present
     if messages and messages[0].get("role") == "system":
         system_prompt = messages[0]["content"]
         messages = messages[1:]
+        print(f"Found system prompt: {system_prompt}")
     else:
         system_prompt = "You are a helpful assistant."
+        print("Using default system prompt")
 
+    # Load tools if enabled
+    tools = None
+    print(f"Tools enabled: {getattr(args, 'tools', False)}")
+    if getattr(args, 'tools', False):
+        try:
+            tools_path = os.path.join(os.getenv("LLT_DIR", ""), "tools.json")
+            print(f"Loading tools from {tools_path}")
+            with open(tools_path, 'r') as f:
+                tools_data = json.load(f)
+                print(f"Loaded tools data: {tools_data}")
+                # Convert tools data to format expected by Claude
+                tools = []
+                for func_name, func_data in tools_data.get("functions", {}).items():
+                    print(f"Processing tool: {func_name}")
+                    tool = {
+                        "name": func_name,
+                        "description": func_data.get("description", ""),
+                        "input_schema": {
+                            "type": "object",
+                            "properties": {
+                                param: {"type": "string", "description": desc} 
+                                for param, desc in func_data.get("parameters", {}).items()
+                            },
+                            "required": list(func_data.get("parameters", {}).keys())
+                        }
+                    }
+                    tools.append(tool)
+                print(f"Processed {len(tools)} tools")
+        except Exception as e:
+            print(f"Failed to load tools configuration: {e}")
+            tools = None
+
+    # Handle image content if present
+    print("Checking for image content")
     for message in messages:
         if isinstance(message.get("content"), list):
             for content_item in message["content"]:
                 if content_item.get("type") == "image" and content_item["source"].get("data", "").startswith("file://"):
-                    pass
+                    print(f"Found image in message: {content_item['source']['data']}")
+                    pass  # Handle image loading if needed
 
     response_content = ""
-    try:
-        with anthropic_client.messages.stream(
+        # Configure message parameters
+    print("Configuring message parameters")
+    params = {
+        "model": args.model,
+        "system": system_prompt,
+        "messages": messages,
+        "temperature": args.temperature,
+        "max_tokens": args.max_tokens,
+    }
+    print(f"Parameters configured: {params}")
+    
+    # Add tools if enabled
+    if tools:
+        print("Adding tools to parameters")
+        params["tools"] = tools
+        # Let Claude decide when to use tools
+        params["tool_choice"] = {"type": "auto"}
+        print("Creating completion with tools")
+        completion = anthropic_client.messages.create(
             model=args.model,
             system=system_prompt,
             messages=messages,
             temperature=args.temperature,
             max_tokens=args.max_tokens,
-        ) as stream:
-            for text in stream.text_stream:
-                print(text, end="", flush=True)
-                response_content += text
-            print("\r")
-    except Exception as e:
-        print(f"Anthropic API request failed: {e}")
+            tools=tools,
+            tool_choice={"type": "auto"}
+        )
+        print(f"Got completion response with tools: {completion}")
+        
+        # Handle tool use in the response
+        print(f"{completion.content[1]}")
+        if len(completion.content) > 1:
+            tool_result = completion.content[1]
+            name = tool_result.name
+            input = tool_result.input
+            print(f"Tool result: {tool_result}")
+            return {"role": "tool", "content": f"{name}: {input}"}
 
+        print("No tool calls found, returning no-use message")            
+        return {"role": "tool", "content": "No tool was used."}
+            
+    print("Streaming response without tools")
+    # Stream the response
+    with anthropic_client.messages.stream(**params) as stream:
+        for text in stream.text_stream:
+            print(text, end="", flush=True)
+            response_content += text
+        print("\r")
+        print(f"Final response content length: {len(response_content)}")
+
+
+    print(f"Returning final response: {response_content[:100]}...")
     return {"role": "assistant", "content": response_content}
-
-
 def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Placeholder for a local LLM or other offline approach.
