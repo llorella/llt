@@ -5,9 +5,7 @@ import json
 from typing import Optional, Dict, List
 
 from plugins import llt
-from utils.input_utils import path_input, get_valid_index, list_input
-from utils.colors import Colors
-
+from utils import path_input, get_valid_index, list_input,Colors
 
 class Message(Dict):
     role: str

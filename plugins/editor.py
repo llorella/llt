@@ -7,17 +7,17 @@ from typing import List, Dict, Optional, Callable, Iterator, Union
 from pathlib import Path
 
 from plugins import llt
-from utils.input_utils import path_input, get_valid_index, confirm_action
-from utils.colors import Colors
-from utils.md_parser import (
+from utils import path_input, get_valid_index, confirm_action
+from utils import Colors
+from utils import (
     parse_markdown_for_codeblocks,
     language_extension_map,
     detect_language_from_content
 )
-from utils.diff import generate_diff, format_diff
-from utils.tempfile_manager import TempFileManager
+from utils import generate_diff, format_diff
+from utils import TempFileManager
 from utils.backup_manager import BackupManager
-from utils.helpers import encode_image_to_base64, content_input, list_input
+from utils import encode_image_to_base64, content_input, list_input
 from utils.file_operations import get_project_dir
 
 temp_manager = TempFileManager()

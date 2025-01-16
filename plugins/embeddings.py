@@ -13,8 +13,8 @@ import fnmatch
 from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
 
 from plugins import llt
-from utils.helpers import Colors, path_input, get_valid_index
-from utils.md_parser import language_extension_map
+from utils import Colors, path_input, get_valid_index
+from utils import language_extension_map
 
 def get_gitignore_patterns(project_dir: str) -> List[str]:
     """Get patterns from .gitignore file and add default patterns."""

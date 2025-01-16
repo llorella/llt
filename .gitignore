@@ -11,16 +11,8 @@
 !plugins/__init__.py
 !main.py
 !message.py
-!utils/file_operations.py
-!utils/input_utils.py
-!utils/helpers.py
-!utils/colors.py
-!utils/diff.py
-!utils/md_parser.py
-!utils/tempfile_manager.py
-!utils/backup_manager.py
-!utils/file_diff.py
 !tools.json
+!utils.py
 
 !README.md
 !LICENSE

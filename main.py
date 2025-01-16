@@ -8,7 +8,7 @@ import traceback
 from typing import Dict, Callable
 
 from logger import llt_logger
-from utils.helpers import Colors, llt_input
+from utils import Colors, llt_input
 from plugins import load_plugins, add_plugin_arguments, _plugins_registry  # Our plugin registry + dynamic loading
 
 def parse_arguments() -> argparse.Namespace:
@@ -112,7 +112,7 @@ def llt() -> None:
 
     messages = run_startup_plugins(messages, args, cmd_map)
 
-    from utils.helpers import Colors
+    from utils import Colors
     Colors.print_header()
 
     """llt_logger.log_info("llt interactive session started", {

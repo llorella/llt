@@ -6,7 +6,7 @@ import json
 from typing import List, Dict, Any
 
 from message import Message
-from utils.helpers import list_input, content_input, encode_image_to_base64, Colors
+from utils import list_input, content_input, encode_image_to_base64, Colors
 from plugins import llt
 import anthropic  # For anthropic Client usage, if needed
 

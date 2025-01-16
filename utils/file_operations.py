@@ -3,7 +3,7 @@ from typing import List, Dict, Tuple, Optional
 from pathlib import Path
 from utils.colors import Colors
 from utils.diff import generate_diff, format_diff
-from utils.input_utils import path_input
+from utils import path_input
 import pyperclip
 
 
