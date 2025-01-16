@@ -102,7 +102,7 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
 
     if results:
         messages.append({
-            "role": "user",
+            "role": args.role,
             "content": "\n\n".join(results)
         })
     return messages

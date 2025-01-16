@@ -53,7 +53,7 @@ def write(messages: List[Message], args: Dict, index: int = -1) -> List[Message]
     if args.write == ".":
         # if write is "." then write to the same file as load
         args.write = args.load
-    if not args.non_interactive and not args.write:
+    if not args.non_interactive or not args.write:
         ww_path = path_input(args.load, args.ll_dir)
     else:
         ww_path = os.path.join(args.ll_dir, args.write)

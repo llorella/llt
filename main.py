@@ -44,7 +44,7 @@ def init_directories(args: argparse.Namespace) -> None:
 def user_greeting(username: str, args: argparse.Namespace) -> str:
     load_file = getattr(args, "load", "None")
     return (
-        f"Hello {username}! Using ll file {load_file}, "
+        f"Hello {username}! ll {os.path.relpath(os.path.abspath(args.load), os.path.abspath(args.ll_dir))} is loaded "
         f"with model {args.model} at temperature {args.temperature}. "
         f"Type 'help' for commands."
     )
@@ -115,10 +115,10 @@ def llt() -> None:
     from utils.helpers import Colors
     Colors.print_header()
 
-    llt_logger.log_info("llt interactive session started", {
+    """llt_logger.log_info("llt interactive session started", {
         key: val for key, val in vars(args).items()
     })
-
+    """
     print(user_greeting(os.getenv('USER', 'User'), args))
 
     if args.non_interactive:
