@@ -16,9 +16,9 @@ from utils import (
 )
 from utils import generate_diff, format_diff
 from utils import TempFileManager
-from utils.backup_manager import BackupManager
+from utils import BackupManager
 from utils import encode_image_to_base64, content_input, list_input
-from utils.file_operations import get_project_dir
+from utils import get_project_dir
 
 temp_manager = TempFileManager()
 backup_manager = BackupManager()

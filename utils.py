@@ -20,7 +20,6 @@ import pprint
 from typing import List, Dict, Tuple, Optional, ContextManager
 from pathlib import Path
 from contextlib import contextmanager
-from utils.colors import Colors
 # Language mappings
 language_extension_map = {
     "bash": ".sh",
