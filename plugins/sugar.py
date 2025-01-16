@@ -1,7 +1,6 @@
 from typing import List, Dict
 from plugins import llt
-from utils.input_utils import get_valid_index
-from utils.helpers import content_input
+from utils import get_valid_index, content_input
 
 @llt
 def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:

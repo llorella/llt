@@ -659,3 +659,7 @@ class BackupManager:
             
         except Exception as e:
             Colors.print_colored(f"Error cleaning up old backups: {e}", Colors.RED) 
+
+def confirm_action(prompt: str) -> bool:
+    """Prompt the user to confirm an action."""
+    return input(f"{prompt} (y/N) [N]: ").lower() == 'y'
