@@ -90,7 +90,7 @@ def send_request(
                         finish_reason = choice["finish_reason"]
 
                         if finish_reason is None:
-                            text = delta.get("content", "") or ""
+                            text = delta.get("content") or delta.get("reasoning_content") or ""
                             print(text, end="", flush=True)
                             full_response_content += text
                         if finish_reason == "stop":
@@ -144,7 +144,6 @@ def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any
             tools = None
 
     # Handle image content if present
-    print("Checking for image content")
     for message in messages:
         if isinstance(message.get("content"), list):
             for content_item in message["content"]:
