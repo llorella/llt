@@ -188,8 +188,7 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         if not hasattr(args, flag):
             continue
             
-        value = getattr(args, flag)
-        if value:  # Only schedule if value is truthy (not None and not False)
+        if getattr(args, flag):  # only schedule if value is truthy
             command_queue.append(ScheduledCommand(flag, -1))
     
     return command_queue

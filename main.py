@@ -6,7 +6,7 @@ import argparse
 import traceback
 
 from logger import llt_logger
-from utils import Colors, llt_input
+from utils import Colors, llt_input, parse_cmd_string
 from plugins import (
     load_plugins, 
     add_plugin_arguments,
@@ -101,7 +101,6 @@ def llt() -> None:
             if command_queue:
                 cmd = command_queue.popleft()
                 cmd_name, index = cmd.name, cmd.index
-                print(f"Executing queued command: {cmd_name} (index: {index})")
             elif args.non_interactive:
                 print("Non-interactive mode complete, exiting...")
                 break
@@ -120,7 +119,9 @@ def llt() -> None:
                     print(f"LLT role message detected: {messages[-1]['content']}")
                     if not args.non_interactive:
                         if input("Add this LLT command to queue? (y/N): ").lower() == 'y':
-                            command_queue.append(ScheduledCommand(messages[-1]["content"], index))
+                            cmd_name, index = parse_cmd_string(messages[-1]["content"]) 
+                            command_queue.append(ScheduledCommand(cmd_name, index))
+                            messages.pop() # remove the llt message
                             print("Command added to queue")
                         else:
                             print("Command skipped")

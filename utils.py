@@ -309,13 +309,8 @@ def content_input(display_string: str = "Enter content below.") -> str:
     Colors.print_colored("\n*********************************************************\n", Colors.YELLOW)
     return content
 
-def llt_input(plugin_keys: List[str], suggested_cmd: str = "") -> Tuple[str, int]:
-    readline.set_completer_delims(' \t\n;')
-    readline.parse_and_bind("tab: complete")
-    readline.set_completer(list_completer(plugin_keys))
-
-    raw_cmd = input(f"llt (suggested is {suggested_cmd})> ")
-    
+def parse_cmd_string(raw_cmd: str) -> Tuple[str, int]:
+    """Parse a command string into command name and index."""
     # Strip whitespace
     raw_cmd = raw_cmd.strip()
     
@@ -346,6 +341,15 @@ def llt_input(plugin_keys: List[str], suggested_cmd: str = "") -> Tuple[str, int
     
     # Default: Just a command with no index
     return raw_cmd, -1
+
+def llt_input(plugin_keys: List[str], suggested_cmd: str = "") -> Tuple[str, int]:
+    """Get command input from user with tab completion."""
+    readline.set_completer_delims(' \t\n;')
+    readline.parse_and_bind("tab: complete")
+    readline.set_completer(list_completer(plugin_keys))
+
+    raw_cmd = input(f"llt (suggested is {suggested_cmd})> ")
+    return parse_cmd_string(raw_cmd)
 
 def get_valid_index(messages: List[Dict[str, any]], prompt: str, default=-1) -> int:
     """Prompt the user to enter a valid index for a message."""
