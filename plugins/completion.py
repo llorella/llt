@@ -115,33 +115,7 @@ def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any
         system_prompt = messages[0]["content"]
         messages = messages[1:]
     else:
-        system_prompt = "You are a helpful assistant."
-
-    tools = None
-    if getattr(args, 'tools', False):
-        try:
-            tools_path = os.path.join(os.getenv("LLT_DIR", ""), "tools.json")
-            print(f"Loading tools from {tools_path}")
-            with open(tools_path, 'r') as f:
-                tools_data = json.load(f)
-                tools = []
-                for func_name, func_data in tools_data.get("functions", {}).items():
-                    print(f"Processing tool: {func_name}")
-                    tool = {
-                        "name": func_name,
-                        "description": func_data.get("description", ""),
-                        "input_schema": {
-                            "type": "object",
-                            "properties": {
-                                param: {"type": "string", "description": desc} 
-                                for param, desc in func_data.get("parameters", {}).items()
-                            },
-                            "required": list(func_data.get("parameters", {}).keys())
-                        }
-                    }
-                    tools.append(tool)
-        except Exception as e:
-            tools = None
+        system_prompt = "You are a helpful assistant."    
 
     # Handle image content if present
     for message in messages:
@@ -160,26 +134,7 @@ def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any
         "max_tokens": args.max_tokens,
     }
     
-    if tools:
-        completion = anthropic_client.messages.create(
-            model=args.model,
-            system=system_prompt,
-            messages=messages,
-            temperature=args.temperature,
-            max_tokens=args.max_tokens,
-            tools=tools,
-            tool_choice={"type": "auto"}
-        )
-        tool_results = []
-        for i, content in enumerate(completion.content):
-            if content.type == "text":
-                print(content.text, end="", flush=True)
-                tool_results.append({"role": "assistant", "content": content.text})
-            elif content.type == 'tool_use':
-                tool_name = content.name
-                tool_args = content.input
-                tool_results.append({"role": "tool", "content": f"{tool_name}: {tool_args}"})
-        return ({"role": "tool", "content": tool_results or "No tool was used."})
+    
         
     with anthropic_client.messages.stream(**params) as stream:
         for text in stream.text_stream:
@@ -189,8 +144,7 @@ def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any
     return {"role": "assistant", "content": response_content}
 
 
-    print(f"Returning final response: {response_content[:100]}...")
-    return {"role": "assistant", "content": response_content}
+    
 def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Dict[str, Any]:
     """
     Placeholder for a local LLM or other offline approach.
@@ -273,4 +227,145 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
     except Exception as e:
         print(f"{Colors.RED}Error updating value: {str(e)}{Colors.RESET}")
 
+    return messages
+
+@llt
+def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    """
+    Description: Suggest a tool to use with optimized prompt structure
+    Type: bool
+    Default: false
+    flag: suggest_tool
+    """
+    anthropic_client = anthropic.Client()
+
+    last_messages = messages[-3:] if len(messages) > 3 else messages
+    conversation_context = "\n".join([
+        f"{msg['role']}: {msg['content'][:100]}..." for msg in last_messages
+    ])
+
+    # Load and process tools
+    try:
+        tools_path = os.path.join(os.getenv("LLT_DIR", ""), "tools.json")
+        with open(tools_path, 'r') as f:
+            tools_data = json.load(f)
+            tools = []
+            tool_names = []
+            
+            for func_name, func_data in tools_data.get("functions", {}).items():
+                tool_names.append(func_name)
+                tools.append({
+                    "name": func_name,
+                    "description": func_data.get("description", ""),
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "index": {
+                                "type": "integer",
+                                "description": "Message index to operate on (-1 for last message)",
+                                "default": -1
+                            },
+                            **{
+                                param: {"type": "string", "description": desc} 
+                                for param, desc in func_data.get("parameters", {}).items()
+                            }
+                        },
+                        "required": ["index"]
+                    }
+                })
+    except Exception as e:
+        print(f"{Colors.RED}Error loading tools: {str(e)}{Colors.RESET}")
+        return messages
+
+    # Construct optimized prompt
+    optimized_prompt = f"""Given the conversation context and available tools, determine the most appropriate next action:
+
+1. CONTEXT:
+- Current model: {args.model}
+- Available tools: {', '.join(tool_names)}
+- Conversation state:
+{conversation_context}
+
+2. CONSTRAINTS:
+- Must output only: <command> <index>
+- Index defaults to -1 for most recent
+- Commands must be valid LLT plugins
+- Consider conversation flow and state
+
+3. EVALUATION CRITERIA:
+- Immediate utility to conversation
+- Command appropriateness
+- Context relevance
+- Action impact
+
+OUTPUT FORMAT:
+<command> <index>
+
+NO explanation or additional text."""
+
+    system_prompt = "You are a tool selection specialist. Your only task is to analyze context and select the most appropriate tool command and index. Respond with exactly two values: command and index."
+
+    try:
+        completion = anthropic_client.messages.create(
+            model=args.model,
+            system=system_prompt,
+            messages=[{"role": "user", "content": optimized_prompt}],
+            temperature=0.3,  # Lower temperature for more focused tool selection
+            max_tokens=50,    # Minimal tokens needed for command + index
+            tools=tools,
+            tool_choice={"type": "auto"}
+        )
+
+        for content in completion.content:
+            print(f"{Colors.CYAN}Processing content type: {content.type}{Colors.RESET}")
+            if content.type == "text":
+                print(f"{Colors.YELLOW}Received text response: {content.text.strip()}{Colors.RESET}")
+            elif content.type == "tool_use":
+                print(f"{Colors.YELLOW}Received tool suggestion: {content.name}{Colors.RESET}")
+                print(f"{Colors.YELLOW}Tool arguments: {content.input}{Colors.RESET}")
+            if content.type == "text":
+                # Parse the response into command and index
+                response = content.text.strip().split()
+                if len(response) == 2 and response[0] in tool_names:
+                    command, idx = response
+                    messages.append({
+                        "role": "llt",
+                        "content": f"{command}{idx}"
+                    })
+                    print(f"{Colors.GREEN}Tool selected: {command} {idx}{Colors.RESET}")
+                else:
+                    print(f"{Colors.RED}Invalid tool selection format{Colors.RESET}")
+            elif content.type == "tool_use":
+                tool_message = {
+                    "role": "tool",
+                    "content": f"Tool use: {content.name} with args {content.input}"
+                }
+                messages.append(tool_message)
+                print(f"{Colors.GREEN}Tool use suggested: {content.name}{Colors.RESET}")
+
+    except Exception as e:
+        print(f"{Colors.RED}Error during tool suggestion: {str(e)}{Colors.RESET}")
+
+    return messages
+
+
+@llt
+def use_tool(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    """
+    Description: Use a tool
+    Type: bool
+    Default: false
+    flag: use_tool
+    """
+    
+
+    return messages
+
+
+@llt
+def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    new_value = list_input(full_model_choices)
+    if new_value:
+        args.model = new_value
+        Colors.print_colored(f"Changed model to: {new_value}", Colors.GREEN)
     return messages

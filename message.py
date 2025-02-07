@@ -21,11 +21,11 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     flag: load
     short: ll
     """
+    ll_path = os.path.join(args.ll_dir, args.load)
+    
     if not args.non_interactive:
-        ll_path = path_input(args.load, args.ll_dir)
-    else:
-        ll_path = os.path.join(args.ll_dir, args.load)
-
+        ll_path = path_input(ll_path, args.ll_dir)
+        
     os.makedirs(os.path.dirname(ll_path), exist_ok=True)
 
     if os.path.exists(ll_path):
@@ -36,7 +36,8 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
         Colors.print_colored(f"Loaded {len(messages)} messages from '{ll_path}'.", Colors.GREEN)
 
     args.load = ll_path
-    return messages
+
+    return messages 
 
 
 @llt
@@ -183,7 +184,7 @@ def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1
 
 
 @llt
-def role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def change_role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
     index = get_valid_index(messages, "modify role of", index)
     new_role = list_input(["user", "assistant", "system", "tool"], "Select new role for the message")
     messages[index]["role"] = new_role
@@ -211,7 +212,7 @@ def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -
             "user": Colors.GREEN,
             "assistant": Colors.MAGENTA,
             "system": Colors.BLUE,
-            "tool": Colors.CYAN,
+            "llt": Colors.YELLOW,
         }.get(role, Colors.WHITE)
 
         header = f"{color}[{role.capitalize()}]{Colors.RESET}"
@@ -219,6 +220,7 @@ def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -
         Colors.print_colored(header, color)
 
         if isinstance(content, list):
+            print(content)
             for item in content:
                 if item["type"] == "text":
                     print(item["text"])

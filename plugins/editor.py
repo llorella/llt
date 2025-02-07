@@ -45,7 +45,8 @@ def execute_code(code: str, language: str, timeout: int = 30) -> str:
     runners = {
         "python": ["python3", "-c"],
         "bash": ["bash", "-c"],
-        "node": ["node", "-e"],
+        "javascript": ["node", "-e"],
+        "typescript": ["bun"],
         "ruby": ["ruby", "-e"],
         "shell": ["bash", "-c"]
     }

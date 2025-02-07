@@ -2,10 +2,12 @@
 
 import os
 import importlib.util
-from typing import Callable, Dict, Any
+from typing import Callable, Dict, Any, Optional
 from logger import llt_logger
 import argparse
 import re
+from collections import deque
+from dataclasses import dataclass
 
 _plugins_registry: Dict[str, Dict[str, Any]] = {}
 
@@ -64,8 +66,6 @@ def llt(fn: Callable) -> Callable:
 def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
     """
     Create argparse flags from the collected plugin registry.
-
-    We read the docstring-derived metadata: flag, short, type, default, description.
     """
     used_flags = set()
     used_shorts = set()
@@ -79,12 +79,10 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
         arg_type = info['type']
         default_val = info['default']
 
-        # Ensure main (long) flag is unique
         if flag_str in used_flags:
             llt_logger.warning(f"Duplicate plugin flag '{flag_str}' in {plugin_name}")
         used_flags.add(flag_str)
 
-        # Potentially add short flag if it's not empty
         cli_flags = [f"--{flag_str}"]
         if short_str:
             if short_str in used_shorts:
@@ -93,22 +91,19 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
                 cli_flags.append(f"-{short_str}")
             used_shorts.add(short_str)
 
-        # Convert 'type' to an actual Python type / action
-        # Check if flags are already present in parser
         if arg_type in ("bool", "boolean"):
             parser.add_argument(
                 *cli_flags,
                 action='store_true',
-                default=(default_val.lower() == "true"),
+                default=(str(default_val).lower() == "true"),
                 help=description
             )
         elif arg_type in ("int", "float"):
             py_type = int if arg_type == "int" else float
-            # handle default if possible
             try:
                 default_conv = py_type(default_val)
-            except ValueError:
-                default_conv = None if not default_val else default_val
+            except (ValueError, TypeError):
+                default_conv = None
             parser.add_argument(
                 *cli_flags,
                 type=py_type,
@@ -116,11 +111,10 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
                 help=description
             )
         else:
-            # treat as string
             parser.add_argument(
                 *cli_flags,
                 type=str,
-                default=default_val if default_val else None,
+                default=default_val,
                 help=description
             )
 
@@ -175,3 +169,27 @@ def init_cmd_map() -> Dict[str, Callable]:
     cmd_map["q"] = cmd_map["quit"] = quit
     
     return cmd_map
+
+@dataclass
+class ScheduledCommand:
+    """Command to be executed, whether from CLI args or interactive input"""
+    name: str  # Command name/flag
+    index: int  # Position in message list or -1
+    args: Optional[dict] = None  # Any additional args needed for command
+
+def schedule_startup_commands(args) -> deque[ScheduledCommand]:
+    """Convert CLI args into a queue of commands to execute"""
+    command_queue: deque[ScheduledCommand] = deque()
+    
+    for plugin_name, info in _plugins_registry.items():
+        flag = info['flag']
+        plugin_type = info['type']
+        
+        if not hasattr(args, flag):
+            continue
+            
+        value = getattr(args, flag)
+        if value:  # Only schedule if value is truthy (not None and not False)
+            command_queue.append(ScheduledCommand(flag, -1))
+    
+    return command_queue
