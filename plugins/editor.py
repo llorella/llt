@@ -121,12 +121,12 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     flag: execute
     short: x
     """
-    target_lang = getattr(args, 'code_block')
-    if not args.non_interactive and not args.auto:
+    target_lang = args.get('code_block')
+    if not args.get('non_interactive') and not args.get('auto'):
         index = get_valid_index(messages, "execute code blocks from", index)
         target_lang = list_input(language_extension_map.keys(), f"Enter a language (default is {target_lang})").strip() or target_lang
 
-    timeout = int(getattr(args, 'timeout', 30))
+    timeout = int(args.get('timeout', 30))
 
     results = []
     blocks = iter_blocks(
@@ -138,7 +138,7 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         print(f"\nCode block {block['index'] + 1} ({block['language']}):")
         Colors.print_colored(block["content"], Colors.CYAN)
 
-        if args.auto or (args.non_interactive or confirm_action("Execute this block?")):
+        if args.get('auto') or (args.get('non_interactive') or confirm_action("Execute this block?")):
             try:
                 output, cmd = execute_code(block["content"], block["language"], timeout)
                 if cmd:
@@ -170,14 +170,14 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     Description: Edit code blocks in messages at project root path
     Type: bool
     Default: false
-    flag: edit
-    short: ed
+    flag: apply
+    short: edit
     """
     msg_index = get_valid_index(messages, "write code blocks from", index)
-    lang_filter = getattr(args, 'lang', None)
-    create_backups = getattr(args, 'backup', True)
-    show_diff = not getattr(args, 'no_diff', False)
-    force = getattr(args, 'force', False)
+    lang_filter = args.get('lang')
+    create_backups = args.get('backup', True)
+    show_diff = not args.get('no_diff', False)
+    force = args.get('force', False)
 
     modified = []
     skipped = []
@@ -228,7 +228,7 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         summary.extend(f"  - {f}" for f in skipped)
 
     messages.append({
-        "role": args.role,
+        "role": args.get('role', 'user'),
         "content": "\n".join(summary)
     })
     return messages
@@ -247,7 +247,7 @@ def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         return messages
 
     msg_index = get_valid_index(messages, "edit content of", index)
-    editor = getattr(args, 'editor', None) or os.environ.get("EDITOR", "vim")
+    editor = args.get('editor') or os.environ.get("EDITOR", "vim")
 
     with temp_manager.temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
         try:
@@ -256,7 +256,7 @@ def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
                 new_content = f.read()
 
             if new_content != messages[msg_index]["content"]:
-                if getattr(args, 'backup', True):
+                if args.get('backup', True):
                     backup_manager.create_backup(temp_path)
                 messages[msg_index]["content"] = new_content
 
@@ -295,11 +295,11 @@ def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         print("No messages to copy.")
         return messages
 
-    if not args.non_interactive:
+    if not args.get('non_interactive'):
         index = get_valid_index(messages, "copy", index)
 
-    if getattr(args, 'blocks', False):
-        lang_filter = getattr(args, 'lang', None)
+    if args.get('blocks', False):
+        lang_filter = args.get('lang')
         blocks = list(iter_blocks(
             messages[index],
             predicate=lambda b: not lang_filter or b["language"] == lang_filter
@@ -326,10 +326,10 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     flag: file
     short: f
     """
-    if not args.file or not args.non_interactive:
-        file_path = path_input(args.file, os.getcwd())
+    if not args.get('file') or not args.get('non_interactive'):
+        file_path = path_input(args.get('file'), os.getcwd())
     else:
-        file_path = args.file
+        file_path = args.get('file')
 
     if not os.path.exists(file_path):
         print(f"Error: File not found at {file_path}")
@@ -337,7 +337,7 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
 
     _, ext = os.path.splitext(file_path)
     if ext.lower() in [".png", ".jpeg", ".jpg", ".gif", ".webp"]:
-        prompt = (args.prompt if args.non_interactive else content_input()) or args.prompt
+        prompt = (args.get('prompt') if args.get('non_interactive') else content_input()) or args.get('prompt')
         try:
             encoded_image = encode_image_to_base64(file_path)
         except Exception as e:
@@ -356,7 +356,6 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
             data = file.read()
         if ext.lower() in language_extension_map:
             data = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{data}\n```"
-        messages.append({"role": args.role, "content": data})
+        messages.append({"role": args.get('role', 'user'), "content": data})
 
-    setattr(args, 'file', None)
     return messages

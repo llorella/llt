@@ -185,32 +185,32 @@ def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Li
     Type: bool
     Default: false
     flag: url_fetch
-    short:
+    short: url
     """
-    if not args.url_fetch:
+    if not args.get('url_fetch'):
         index = get_valid_index(messages, "fetch url from", index)
 
     url = messages[index]["content"]
 
-    if hasattr(args, 'tags') and args.tags:
-        if isinstance(args.tags, str):
-            tags = get_tags_for_type(args.tags)
+    if args.get('tags'):
+        if isinstance(args.get('tags'), str):
+            tags = get_tags_for_type(args.get('tags'))
         else:
-            tags = args.tags
+            tags = args.get('tags')
     else:
         tags = DEFAULT_TAGS['content']
 
     result = process_url(
         url=url,
         tags=tags,
-        include_metadata=getattr(args, 'include_metadata', False)
+        include_metadata=args.get('include_metadata', False)
     )
 
     if result:
         formatted_content, metadata = result
         messages.append({
-            'role': args.role,
-            'content': formatted_content
+            'role': args.get('role', 'user'),
+            'content': f'<url>\n{url}\n</url>\n\n<content>\n{formatted_content}\n</content>\n'
         })
 
         llt_logger.log_info("URL content fetched and processed", {
@@ -220,7 +220,6 @@ def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Li
             **metadata
         })
 
-    args.url_fetch = False
     return messages
 
 

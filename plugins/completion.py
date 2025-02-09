@@ -64,10 +64,10 @@ def send_request(
     }
     data = {
         "messages": messages,
-        "model": args.model,
-        "max_completion_tokens": args.max_tokens,
-        "temperature": args.temperature,
-        "max_tokens": args.max_tokens,
+        "model": args.get('model'),
+        "max_completion_tokens": args.get('max_tokens'),
+        "temperature": args.get('temperature'),
+        "max_tokens": args.get('max_tokens'),
         "stream": True,
     }
 
@@ -127,11 +127,11 @@ def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any
 
     response_content = ""
     params = {
-        "model": args.model,
+        "model": args.get('model'),
         "system": system_prompt,
         "messages": messages,
-        "temperature": args.temperature,
-        "max_tokens": args.max_tokens,
+        "temperature": args.get('temperature'),
+        "max_tokens": args.get('max_tokens'),
     }
     
     
@@ -171,7 +171,7 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
                         try:
                             base64_image = encode_image_to_base64(image_url.replace("file://", ""))
                             _, ext = os.path.splitext(image_url)
-                            if args.model.startswith("claude"):
+                            if args.get('model').startswith("claude"):
                                 encoded_messages[i]["content"] = {
                                     "type": "image",
                                     "source": {
@@ -202,7 +202,7 @@ def complete(messages: List[Message], args: Dict, index: int = -1) -> List[Messa
     flag: complete
     short:
     """
-    provider, api_key, completion_url = get_provider_details(args.model)
+    provider, api_key, completion_url = get_provider_details(args.get('model'))
 
     messages_with_images = encode_images(messages.copy(), args)
 
@@ -225,7 +225,7 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
     Default: false
     flag: modify_args
     """
-    args_dict = vars(args)
+    args_dict = args
 
     arg_choices = [
         f"{key} ({type(value).__name__}): {Colors.YELLOW}{value}{Colors.RESET}"
@@ -238,7 +238,7 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
         return messages
 
     key = selected.split()[0]
-    current_value = args_dict[key]
+    current_value = args_dict.get(key)
     print(f"\nCurrent value of {Colors.BOLD}{key}{Colors.RESET}: {Colors.YELLOW}{current_value}{Colors.RESET}")
 
     try:
@@ -262,7 +262,7 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
             new_value = content_input(f"Enter new value: ")
 
         if new_value is not None:
-            setattr(args, key, new_value)
+            args[key] = new_value
             print(f"\n{Colors.GREEN}Updated {key}:{Colors.RESET}")
             print(f"  {Colors.BOLD}Old:{Colors.RESET} {current_value}")
             print(f"  {Colors.BOLD}New:{Colors.RESET} {new_value}")
@@ -324,7 +324,7 @@ def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[M
     optimized_prompt = f"""Given the conversation context and available tools, determine the most appropriate next action:
 
 1. CONTEXT:
-- Current model: {args.model}
+- Current model: {args.get('model')}
 - Available tools: {', '.join(tool_names)}
 - Conversation state:
 {conversation_context}
@@ -350,7 +350,7 @@ NO explanation or additional text."""
 
     try:
         completion = anthropic_client.messages.create(
-            model=args.model,
+            model=args.get('model'),
             system=system_prompt,
             messages=[{"role": "user", "content": optimized_prompt}],
             temperature=0.3,  # Lower temperature for more focused tool selection
@@ -409,6 +409,6 @@ def use_tool(messages: List[Message], args: Dict, index: int = -1) -> List[Messa
 def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     new_value = list_input(full_model_choices)
     if new_value:
-        args.model = new_value
+        args['model'] = new_value
         Colors.print_colored(f"Changed model to: {new_value}", Colors.GREEN)
     return messages

@@ -13,7 +13,7 @@ class Message(Dict):
 
 
 @llt
-def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Load ll file containing conversation
     Type: string
@@ -21,10 +21,10 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     flag: load
     short: ll
     """
-    ll_path = os.path.join(args.ll_dir, args.load)
+    ll_path = os.path.join(dict["ll_dir"], dict["load"])
     
-    if not args.non_interactive or not args.auto:
-        ll_path = path_input(ll_path, args.ll_dir)
+    if not dict["non_interactive"] or not dict["auto"]:
+        ll_path = path_input(ll_path, dict["ll_dir"])
         
     os.makedirs(os.path.dirname(ll_path), exist_ok=True)
 
@@ -32,16 +32,16 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
         with open(ll_path, 'r') as file:
             messages = json.load(file)
 
-    if not args.non_interactive:
+    if not dict["non_interactive"]:
         Colors.print_colored(f"Loaded {len(messages)} messages from '{ll_path}'.", Colors.GREEN)
 
-    args.load = ll_path
+    dict["load"] = ll_path
 
     return messages
 
 
 @llt
-def write(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Write conversation to file
     Type: string
@@ -49,26 +49,26 @@ def write(messages: List[Message], args: Dict, index: int = -1) -> List[Message]
     flag: write
     short: w
     """
-    if args.write == ".":
+    if dict["write"] == ".":
         # if write is "." then write to the same file as load
-        args.write = args.load
-    if not args.non_interactive or not args.write:
-        ww_path = path_input(args.load, args.ll_dir)
+        dict["write"] = dict["load"]
+    if not dict["non_interactive"] or not dict["write"]:
+        ww_path = path_input(dict["load"], dict["ll_dir"])
     else:
-        ww_path = os.path.join(args.ll_dir, args.write)
+        ww_path = os.path.join(dict["ll_dir"], dict["write"])
 
     os.makedirs(os.path.dirname(ww_path), exist_ok=True)
 
     with open(ww_path, "w") as file:
         json.dump(messages, file, indent=2)
-    if not args.non_interactive:
+    if not dict["non_interactive"]:
         Colors.print_colored(f"Saved {len(messages)} messages to '{ww_path}'.", Colors.GREEN)
-    args.write = ww_path
+    dict["write"] = ww_path
     return messages
 
 
 @llt
-def prompt(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+def prompt(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Add user prompt message
     Type: string
@@ -76,17 +76,17 @@ def prompt(messages: List[Message], args: Dict, index: int = -1) -> List[Message
     flag: prompt
     short: p
     """
-    Colors.print_colored(f"Adding message to the conversation: {args.prompt}", Colors.YELLOW)
-    message = Message(role=args.role, content=args.prompt)
+    Colors.print_colored(f"Adding message to the conversation: {dict['prompt']}", Colors.YELLOW)
+    message = Message(role=dict["role"], content=dict["prompt"])
     messages.append(message)
-    if not args.non_interactive:
+    if not dict["non_interactive"]:
         Colors.print_colored("Added new message to the conversation.", Colors.GREEN)
-    setattr(args, "prompt", None)
+    dict["prompt"] = None
     return messages
 
 
 @llt
-def remove(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def remove(messages: List[Message], dict: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Description: Remove a message from the conversation
     Type: bool
@@ -94,16 +94,16 @@ def remove(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     flag: remove
     short:
     """
-    message_index = get_valid_index(messages, "remove", index) if not getattr(args, "remove", False) else index
+    message_index = get_valid_index(messages, "remove", index) if not dict.get("remove", False) else index
     messages.pop(message_index)
-    if not args.non_interactive:
+    if not dict["non_interactive"]:
         Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
-    setattr(args, "remove", False)
+    dict["remove"] = False
     return messages
 
 
 @llt
-def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def attach(messages: List[Message], dict: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Description: Attach a set of messages from file
     Type: string
@@ -111,11 +111,11 @@ def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     flag: attach
     short:
     """
-    if args.attach:
-        ll_path = os.path.join(args.ll_dir, args.attach)
-        args.attach = None
+    if dict["attach"]:
+        ll_path = os.path.join(dict["ll_dir"], dict["attach"])
+        dict["attach"] = None
     else:
-        ll_path = path_input(None, args.ll_dir)
+        ll_path = path_input(None, dict["ll_dir"])
 
     if ll_path is None:
         return messages
@@ -124,13 +124,13 @@ def attach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
         new_messages = json.load(file)
 
     messages.extend(new_messages)
-    if not args.non_interactive:
+    if not dict["non_interactive"]:
         Colors.print_colored(f"Attached {len(new_messages)} messages to the current conversation.", Colors.GREEN)
     return messages
 
 
 @llt
-def detach(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def detach(messages: List[Message], dict: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Description: Detach a message from the conversation
     Type: bool
@@ -138,21 +138,21 @@ def detach(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     flag: detach
     short:
     """
-    if args.detach:
-        args.detach = False
+    if dict["detach"]:
+        dict["detach"] = False
     else:
         index = get_valid_index(messages, "detach", index)
 
     detached_message = messages.pop(index)
 
-    if not args.non_interactive:
+    if not dict["non_interactive"]:
         Colors.print_colored(f"Detached message at index {index + 1}.", Colors.GREEN)
 
     return [detached_message]
 
 
 @llt
-def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def fold(messages: List[Message], dict: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Description: Combine last user message with the previous user message
     Type: bool
@@ -161,7 +161,7 @@ def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) 
     short:
     """
     initial_length = len(messages)
-    while len(messages) > 1 and messages[-2]["role"] == args.role:
+    while len(messages) > 1 and messages[-2]["role"] == dict["role"]:
         messages[-2]["content"] += "\n" + messages[-1]["content"]
         messages.pop()
     folded_messages = initial_length - len(messages)
@@ -170,7 +170,7 @@ def fold(messages: List[Message], args: Optional[Dict] = None, index: int = -1) 
 
 
 @llt
-def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def insert(messages: List[Message], dict: Optional[Dict] = None, index: int = -1) -> List[Message]:
     """
     Description: Insert a new message at a specified index
     Type: bool
@@ -179,14 +179,14 @@ def insert(messages: List[Message], args: Optional[Dict] = None, index: int = -1
     short:
     """
     message_index = get_valid_index(messages, "insert", index)
-    new_message = Message(role=args.role, content=args.prompt)
+    new_message = Message(role=dict["role"], content=dict["prompt"])
     messages.insert(message_index, new_message)
     Colors.print_colored(f"Inserted new message at index {message_index + 1}.", Colors.GREEN)
     return messages
 
 
 @llt
-def change_role(messages: List[Message], args: Optional[Dict] = None, index: int = -1) -> List[Message]:
+def change_role(messages: List[Message], dict: Optional[Dict] = None, index: int = -1) -> List[Message]:
     index = get_valid_index(messages, "modify role of", index)
     new_role = list_input(["user", "assistant", "system", "tool"], "Select new role for the message")
     messages[index]["role"] = new_role
@@ -195,7 +195,7 @@ def change_role(messages: List[Message], args: Optional[Dict] = None, index: int
 
 
 @llt
-def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -> List[Message]:
+def view(messages: List[Message], dict: Optional[Dict] = None, index: int = 0) -> List[Message]:
     """
     Description: View messages with formatting
     Type: bool
@@ -243,7 +243,7 @@ def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -
 
 
 @llt
-def cut(messages: List[str], args: Dict, index: int = -1) -> List[str]:
+def cut(messages: List[str], dict: Dict, index: int = -1) -> List[str]:
     """
     Description: Cut messages within a specified range
     Type: bool

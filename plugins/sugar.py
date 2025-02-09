@@ -2,7 +2,7 @@ from typing import List, Dict
 import os
 import json
 from plugins import llt
-from utils import get_valid_index, content_input, list_input
+from utils import get_valid_index, content_input, list_input, language_extension_map
 from logger import llt_logger
 
 def load_xml_tags() -> List[str]:
@@ -34,15 +34,15 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     # Load existing tags
     existing_tags = load_xml_tags()
     
-    tag_name = getattr(args, 'xml_wrap', None)
-    if not tag_name or not args.non_interactive:
+    tag_name = args.get('xml_wrap')
+    if not args.get('auto') and (not tag_name or not args.get('non_interactive')):
         # If there are existing tags, offer them as options
         if existing_tags:
-            tag_name = list_input(existing_tags, f"Select or enter new tag name (default is {args.xml_wrap})")
+            tag_name = list_input(existing_tags, f"Select or enter new tag name (default is {args.get('xml_wrap')})")
         else:
             tag_name = content_input("Enter tag name")
         index = get_valid_index(messages, "xml_wrap content of", index)
-    tag_name = tag_name or args.xml_wrap
+    tag_name = tag_name or args.get('xml_wrap')
     # Add new tag to list and save
     if tag_name:
         messages[index]["content"] = f"<{tag_name}>\n{messages[index]['content']}\n</{tag_name}>"
@@ -56,7 +56,7 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
 @llt
 def strip_trailing_newline(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """Strip trailing newlines from message content."""
-    if not args.non_interactive:
+    if not args.get('non_interactive'):
         index = get_valid_index(messages, "strip trailing newline", index)
     messages[index]["content"] = messages[index]["content"].rstrip("\n")
     return messages
@@ -64,12 +64,35 @@ def strip_trailing_newline(messages: List[Dict], args: Dict, index: int = -1) ->
 @llt
 def indent(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """Indent message content by specified amount."""
-    if not args.non_interactive:
+    if not args.get('non_interactive'):
         index = get_valid_index(messages, "indent content of", index)
-    spaces = getattr(args, 'spaces', 4)
+    spaces = args.get('spaces', 4)
     prefix = ' ' * spaces
     
     messages[index]["content"] = '\n'.join(
         prefix + line for line in messages[index]["content"].splitlines()
     )
+    return messages
+
+@llt
+def code_block(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+    """
+    Description: Wrap message in a code block with language syntax highlighting
+    Type: string
+    Default: bash
+    flag: code_block
+    short: cb
+    """
+    language = args.get('code_block')
+    if not args.get('non_interactive') or not args.get('auto'):
+        index = get_valid_index(messages, "wrap in code block", index)
+        language = list_input(list(language_extension_map.keys()), f"Select programming language (default is {language})") or language
+
+    language = language.lower()
+    if language in language_extension_map:
+        messages[index]["content"] = f"```{language}\n{messages[index]['content']}\n```"
+    else:
+        # Fallback to plain code block if language not found
+        messages[index]["content"] = f"```\n{messages[index]['content']}\n```"
+
     return messages
