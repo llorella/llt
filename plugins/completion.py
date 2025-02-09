@@ -151,6 +151,47 @@ def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Dict[
     """
     return {"role": "assistant", "content": "[local model output]"}
 
+@llt
+def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1) -> List[Message]:
+    """
+    Encode image URLs into the proper format for different providers.
+    Handles both file paths and regular URLs.
+    """
+    # Create a deep copy of messages
+    encoded_messages = None
+    
+    for i, message in enumerate(encoded_messages):
+        if message.get("role") == "user" and message.get("content") and isinstance(message["content"], list):
+            for j, content_item in enumerate(message["content"]):
+                if content_item.get("type") == "image_url":
+                    image_url = content_item["image_url"]
+                    if image_url.startswith("file://") or os.path.exists(image_url):
+                        if encoded_messages is None:
+                            encoded_messages = json.loads(json.dumps(messages))
+                        try:
+                            base64_image = encode_image_to_base64(image_url.replace("file://", ""))
+                            _, ext = os.path.splitext(image_url)
+                            if args.model.startswith("claude"):
+                                encoded_messages[i]["content"] = {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": f"image/{ext[1:].lower()}",
+                                        "data": base64_image
+                                    }
+                                }
+                            else:  # OpenAI format
+                                encoded_messages[i]["content"][j] = {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/{ext[1:].lower()};base64,{base64_image}"
+                                    }
+                                }
+                        except Exception as e:
+                            print(f"Error encoding image: {e}")
+                            return None
+    return encoded_messages
+                
 
 @llt
 def complete(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
@@ -163,12 +204,14 @@ def complete(messages: List[Message], args: Dict, index: int = -1) -> List[Messa
     """
     provider, api_key, completion_url = get_provider_details(args.model)
 
+    messages_with_images = encode_images(messages.copy(), args)
+
     if provider == "anthropic":
-        completion = get_anthropic_completion(messages, args)
+        completion = get_anthropic_completion(messages_with_images, args)
     elif provider == "local":
-        completion = get_local_completion(messages, args)
+        completion = get_local_completion(messages_with_images, args)
     else:
-        completion = send_request(completion_url, api_key, messages, args)
+        completion = send_request(completion_url, api_key, messages_with_images, args)
 
     messages.append(completion)
     return messages
