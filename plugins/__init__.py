@@ -181,6 +181,8 @@ class ScheduledCommand:
 def schedule_startup_commands(args) -> deque[ScheduledCommand]:
     """Schedule CLI plugin args into a queue of commands to execute in order they were serialized"""
     command_queue: deque[ScheduledCommand] = deque()
+
+    cli_command = ["llt"]
     
     # Create mapping of flag variations to plugin names
     flag_to_plugin = {}
@@ -192,9 +194,12 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
             flag_to_plugin[f"--{short}"] = flag
     
     # Iterate through sys.argv to maintain original order
-    for arg in sys.argv[1:]:  # Skip script name
+    for arg in sys.argv[1:]:  
+        # Add the argument to the CLI command for debugging purposes
+        cli_command.append(arg)
+        # Skip script name
         # Strip leading dashes and check if it's a boolean flag
-        stripped_arg = arg.lstrip('-')
+        stripped_arg = arg.lstrip('--')
         if arg in flag_to_plugin:  # Full flag match
             flag = flag_to_plugin[arg]
             if hasattr(args, flag) and getattr(args, flag):
@@ -204,4 +209,5 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
             if hasattr(args, stripped_arg) and getattr(args, stripped_arg):
                 command_queue.append(ScheduledCommand(stripped_arg, -1))
     
+    llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
     return command_queue
