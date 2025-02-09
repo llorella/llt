@@ -8,6 +8,7 @@ import argparse
 import re
 from collections import deque
 from dataclasses import dataclass
+import sys
 
 _plugins_registry: Dict[str, Dict[str, Any]] = {}
 
@@ -88,7 +89,7 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
             if short_str in used_shorts:
                 llt_logger.warning(f"Duplicate short flag '-{short_str}' in {plugin_name}")
             else:
-                cli_flags.append(f"-{short_str}")
+                cli_flags.append(f"--{short_str}")
             used_shorts.add(short_str)
 
         if arg_type in ("bool", "boolean"):
@@ -178,17 +179,29 @@ class ScheduledCommand:
     args: Optional[dict] = None  # Any additional args needed for command
 
 def schedule_startup_commands(args) -> deque[ScheduledCommand]:
-    """Convert CLI args into a queue of commands to execute"""
+    """Schedule CLI plugin args into a queue of commands to execute in order they were serialized"""
     command_queue: deque[ScheduledCommand] = deque()
     
+    # Create mapping of flag variations to plugin names
+    flag_to_plugin = {}
     for plugin_name, info in _plugins_registry.items():
         flag = info['flag']
-        plugin_type = info['type']
-        
-        if not hasattr(args, flag):
-            continue
-            
-        if getattr(args, flag):  # only schedule if value is truthy
-            command_queue.append(ScheduledCommand(flag, -1))
+        short = info['short']
+        flag_to_plugin[f"--{flag}"] = flag
+        if short:
+            flag_to_plugin[f"--{short}"] = flag
+    
+    # Iterate through sys.argv to maintain original order
+    for arg in sys.argv[1:]:  # Skip script name
+        # Strip leading dashes and check if it's a boolean flag
+        stripped_arg = arg.lstrip('-')
+        if arg in flag_to_plugin:  # Full flag match
+            flag = flag_to_plugin[arg]
+            if hasattr(args, flag) and getattr(args, flag):
+                command_queue.append(ScheduledCommand(flag, -1))
+        elif stripped_arg in [info['flag'] for _, info in _plugins_registry.items()]:
+            # Direct flag name match (for cases where arg might be after an =)
+            if hasattr(args, stripped_arg) and getattr(args, stripped_arg):
+                command_queue.append(ScheduledCommand(stripped_arg, -1))
     
     return command_queue

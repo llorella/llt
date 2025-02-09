@@ -23,7 +23,7 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     """
     ll_path = os.path.join(args.ll_dir, args.load)
     
-    if not args.non_interactive:
+    if not args.non_interactive or not args.auto:
         ll_path = path_input(ll_path, args.ll_dir)
         
     os.makedirs(os.path.dirname(ll_path), exist_ok=True)
@@ -37,7 +37,7 @@ def load(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
 
     args.load = ll_path
 
-    return messages 
+    return messages
 
 
 @llt
@@ -76,10 +76,12 @@ def prompt(messages: List[Message], args: Dict, index: int = -1) -> List[Message
     flag: prompt
     short: p
     """
+    Colors.print_colored(f"Adding message to the conversation: {args.prompt}", Colors.YELLOW)
     message = Message(role=args.role, content=args.prompt)
     messages.append(message)
     if not args.non_interactive:
         Colors.print_colored("Added new message to the conversation.", Colors.GREEN)
+    setattr(args, "prompt", None)
     return messages
 
 
@@ -220,13 +222,12 @@ def view(messages: List[Message], args: Optional[Dict] = None, index: int = 0) -
         Colors.print_colored(header, color)
 
         if isinstance(content, list):
-            print(content)
             for item in content:
                 if item["type"] == "text":
                     print(item["text"])
                 elif item["type"] == "image_url":
                     Colors.print_colored(
-                        f"Image path: {item['image_url']['url']}", Colors.CYAN
+                        f"Image path: {item['image_url']}", Colors.CYAN
                     )
         else:
             print(content)
