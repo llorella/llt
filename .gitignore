@@ -2,18 +2,19 @@
 *
 
 # explicitly include the files you want to track
-!plugins/completion.py
-!plugins/editor.py
-!plugins/web.py
-!plugins/embeddings.py
-!plugins/gmail.py
-!plugins/sugar.py
-!plugins/__init__.py
+!completion.py
+!editor.py
+!web.py
+!embeddings.py
+!gmail.py
+!sugar.py
+!__init__.py
 !main.py
 !message.py
+!screenshot.py
 !tools.json
 !utils.py
-
+!plugins/
 !README.md
 !LICENSE
 !requirements.txt
