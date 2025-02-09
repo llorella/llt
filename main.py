@@ -1,9 +1,10 @@
-#!/usr/bin/env python3
 # main.py
 
 import os
 import argparse
 import traceback
+import time
+import sys
 
 from logger import llt_logger
 from utils import Colors, llt_input, parse_cmd_string
@@ -30,7 +31,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument('--exec_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'exec'))
     parser.add_argument('--ll_dir', type=str, default=os.path.join(os.getenv('LLT_PATH', ''), 'll/'))
 
-    parser.add_argument('--tools', action='store_true', help="Enable tool usage calls.")
+    parser.add_argument('--auto', action='store_true', help="Enable auto mode.")
     parser.add_argument('--non_interactive', '-n', action='store_true', 
                         help="Run in non-interactive mode.")
     
@@ -141,11 +142,24 @@ def llt() -> None:
                     "role": args.role, 
                     "content_length": len(cmd_name)
                 })
-
         except KeyboardInterrupt:
             print("\nReceived keyboard interrupt")
-            llt_logger.log_info("Command interrupted")
-            print("\nCommand interrupted.")
+            try:
+                # Wait briefly for potential second interrupt
+                time.sleep(0.5)
+            except KeyboardInterrupt:
+                # Second interrupt detected - exit
+                Colors.print_colored("\nSecond interrupt received, exiting...", Colors.RED)
+                llt_logger.log_info("Double interrupt - exiting")
+                sys.exit(0)
+
+            if args.auto:
+                args.auto = False
+                Colors.print_colored("Auto mode disabled", Colors.YELLOW)
+            else:
+                # Single interrupt - just interrupt current command
+                llt_logger.log_info("Command interrupted") 
+                print("\nCommand interrupted.")
         except Exception as e:
             print("\nEncountered error:")
             llt_logger.log_error(str(e), {"traceback": traceback.format_exc()})
