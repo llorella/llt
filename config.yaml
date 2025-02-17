@@ -1,0 +1,48 @@
+providers:
+  openai:
+    completion_url: https://api.openai.com/v1/chat/completions
+    embeddings_url: https://api.openai.com/v1/embeddings
+    models:
+      gpt-4o: ["latest", "2024-05-13", "2024-08-06", "2024-08-08", mini, mini-2024-07-18]
+      gpt-4: [turbo, 1106-preview, 0125-preview, "0314", "0613"]
+      gpt-3.5: [turbo-0125, turbo, turbo-1106, turbo-instruct]
+      o1: [preview, mini, "2024-12-17"]
+    api_key: OPENAI_API_KEY
+  mistral:  
+    completion_url: https://api.mistral.ai/v1/chat/completions
+    embeddings_url: https://api.mistral.ai/v1/embeddings
+    models:
+      open-mistral: [7b, 8x7b, mistral-nemo]
+      mistral: [small-latest, medium-latest, large-2407, large-latest]
+      codestral: [latest]
+    api_key: MISTRAL_API_KEY
+  anthropic:
+    completion_url: "https://api.anthropic.com/v1/messages"
+    models:
+      claude-3: [opus-20240229, sonnet-20240229, haiku-20240307, 5-sonnet-20240620, 5-sonnet-20241022]
+      research-claude: [cabernet]
+    api_key: ANTHROPIC_API_KEY
+  deepseek:
+    completion_url: https://api.deepseek.com/v1/chat/completions
+    models:
+      deepseek: [chat, reasoner]
+    api_key: DEEPSEEK_API_KEY
+  groq:
+    completion_url: https://api.groq.com/openai/v1/chat/completions
+    models:
+      llama3: [8b-8192, 70b-8192]
+      llama-3.1: [405b-reasoning, 70b-versatile, 8b-instant]
+    api_key: GROQ_API_KEY
+  openrouter:
+    completion_url: https://openrouter.ai/api/v1/chat/completions
+    models:
+      google/gemini: [flash-1.5, pro-1.5, exp-1206:free, exp-1206:pro, 2.0-flash-001, 2.0-flash-lite-preview-02-05:free, 2.0-pro-exp-02-05:free, 2.0-flash-thinking-exp:free, 2.0-flash-exp:free]
+      meta-llama/llama-3.1: [405b, 70b-instruct]
+      qwen/qwen-2.5: [coder-32b-instruct]
+    api_key: OPENROUTER_API_KEY
+  lambda-labs:
+    completion_url: https://api.lambdalabs.com/v1/chat/completions
+    models:
+      hermes-3-llama-3.1-405b: [fp8, fp8-128k]
+    api_key: LAMBDA_API_KEY
+  

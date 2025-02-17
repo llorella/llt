@@ -128,13 +128,13 @@ def create_parser() -> argparse.ArgumentParser:
     # Directory configuration
     dir_group = parser.add_argument_group('Directory Configuration')
     dir_group.add_argument('--cmd_dir', type=str, 
-                          default=os.path.join(os.getenv('LLT_PATH', ''), 'cmd'),
+                          default=os.path.join(os.getenv('LLT_PATH'), 'cmd'),
                           help="Command directory path")
     dir_group.add_argument('--exec_dir', type=str,
-                          default=os.path.join(os.getenv('LLT_PATH', ''), 'exec'),
+                          default=os.path.join(os.getenv('LLT_PATH'), 'exec'),
                           help="Execution directory path")
     dir_group.add_argument('--ll_dir', type=str,
-                          default=os.path.join(os.getenv('LLT_PATH', ''), 'll/'),
+                          default=os.path.join(os.getenv('LLT_PATH'), 'll'),
                           help="Language files directory path")
     
     # Mode settings
@@ -173,7 +173,8 @@ def process_command(
     Maintains compatibility with existing plugins by managing mutable state copies.
     """
     if cmd.name in cmd_map:
-        print(f"\nExecuting command: {cmd.name}")
+        if not state.context.get('non_interactive'):
+            print(f"\nExecuting command: {cmd.name}")
         try:
             # Create mutable copies for plugin compatibility
             messages, context = state.to_plugin_args()
@@ -233,17 +234,20 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
     """
     def process_interrupt(state: AppState) -> AppState:
         """Handle keyboard interrupts."""
-        print("\nReceived keyboard interrupt")
+        if not state.context.get('non_interactive'):
+            print("\nReceived keyboard interrupt")
         try:
             time.sleep(0.5)  # Allow for double-interrupt check
         except KeyboardInterrupt:
-            print("\nDouble interrupt - exiting...")
+            if not state.context.get('non_interactive'):
+                print("\nDouble interrupt - exiting...")
             sys.exit(0)
             
         if state.context.get('auto'):
             new_context = dict(state.context)
             new_context['auto'] = False
-            Colors.print_colored("Auto mode disabled", Colors.YELLOW)
+            if not state.context.get('non_interactive'):
+                Colors.print_colored("Auto mode disabled", Colors.YELLOW)
             return state.with_context(new_context)
         return state
 
@@ -252,7 +256,8 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
         try:
             cmd = get_next_command(state, cmd_map)
             if cmd is None:
-                print("Non-interactive mode complete, exiting...")
+                if not state.context.get('non_interactive'):
+                    print("Non-interactive mode complete, exiting...")
                 return None
             return process_command(cmd_map, cmd, state)
             
@@ -296,9 +301,10 @@ def main() -> None:
     # Initialize command map
     cmd_map = init_cmd_map()
     
-    # Display greeting
-    Colors.print_header()
-    print(create_greeting(initial_state.context))
+    # Display greeting only in interactive mode
+    if not args.non_interactive:
+        Colors.print_header()
+        print(create_greeting(initial_state.context))
     
     # Run application
     run_llt(initial_state, cmd_map)

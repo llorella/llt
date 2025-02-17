@@ -416,44 +416,63 @@ def lookup_embeddings(messages: List[Dict[str, any]], args: Dict, index: int = -
             Colors.print_colored(f"Embeddings file {embeddings_file} not found.", Colors.RED)
             return messages
     
-    # let user pick which message has the query
-    msg_index = get_valid_index(messages, f"message containing search query for {embeddings_file}", index) 
-    query_string = messages[msg_index]['content'] if msg_index >= 0 else "No query provided"
+    if not args.get('non_interactive'):
+        msg_index = get_valid_index(messages, f"message containing search query for {embeddings_file}", index)
+    else:
+        msg_index = index
 
-    df = search_embeddings_with_df(embeddings_file, query_string)
-    if df is None or df.empty:
-        Colors.print_colored("No embeddings found or empty DataFrame.", Colors.RED)
-        return messages
+    # Get query from message
+    query = messages[msg_index]["content"]
 
-    # sort by descending similarity
-    df_sorted = df.sort_values("similarities", ascending=False)
+    try:
+        # Load embeddings
+        with open(embeddings_file, 'r') as f:
+            embeddings = json.load(f)
 
-    top_3 = df_sorted.head(3)
+        # Get embeddings for query
+        query_embedding = get_embedding(query)
 
-    results = []
-    results_str = "Top 3 matching code units:\n"
-    for i, row in top_3.iterrows():
-        full_snippet = row["content"]
-        display_snippet = (full_snippet[:197] + "...") if len(full_snippet) > 200 else full_snippet
-        
-        results.append({
-            "file": row['file'],
-            "name": row['name'],
-            "similarity": row['similarities'],
-            "content": full_snippet  
+        # Calculate similarity scores
+        scores = []
+        for i, doc_embedding in enumerate(embeddings["embeddings"]):
+            similarity = cosine_similarity(query_embedding, doc_embedding)
+            scores.append((i, similarity))
+
+        # Sort by similarity
+        scores.sort(key=lambda x: x[1], reverse=True)
+
+        # Get top results
+        top_k = min(args.get('top_k', 5), len(scores))
+        results = []
+        for i in range(top_k):
+            doc_index = scores[i][0]
+            similarity = scores[i][1]
+            doc = embeddings["documents"][doc_index]
+            results.append({
+                "document": doc,
+                "similarity": similarity
+            })
+
+        # Format results
+        formatted_results = "Search Results:\n\n"
+        for i, result in enumerate(results, 1):
+            formatted_results += f"{i}. Similarity: {result['similarity']:.3f}\n"
+            formatted_results += f"Document: {result['document']}\n\n"
+
+        # Add results to messages
+        messages.append({
+            "role": "system",
+            "content": formatted_results
         })
-        
-        results_str += f"({i+1}) File: {row['file']}\n"
-        results_str += f"    Name: {row['name']}\n"
-        results_str += f"    Similarity: {row['similarities']:.4f}\n"
-        results_str += f"    Preview: {display_snippet}\n"
-    
-    print(results_str)
 
-    messages.append({
-        "role": "lookup_embeddings", 
-        "content": "\n".join(f"({i+1}) File: {r['file']}\n    Name: {r['name']}\n    Similarity: {r['similarity']:.4f}\n    Content: {r['content'] + '...'}" for i, r in enumerate(results)),
-    })
+    except Exception as e:
+        error_msg = f"Error searching embeddings: {str(e)}"
+        Colors.print_colored(error_msg, Colors.RED)
+        messages.append({
+            "role": "system",
+            "content": error_msg
+        })
+
     return messages
 
 def search_embeddings_with_df(embeddings_file: str, query: str):

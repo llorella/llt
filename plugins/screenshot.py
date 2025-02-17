@@ -66,8 +66,9 @@ def screenshot(messages: List[Message], args: Dict, index: int = -1) -> List[Mes
     
     if not args.get('non_interactive'):
         output_path = path_input(
-            os.path.join(screenshot_dir, default_filename),
-            screenshot_dir
+            "Enter screenshot path",
+            default=os.path.join(screenshot_dir, default_filename),
+            base_dir=screenshot_dir
         )
     else:
         output_path = os.path.join(screenshot_dir, args.get('screenshot') or default_filename)

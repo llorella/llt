@@ -14,7 +14,9 @@
 !screenshot.py
 !tools.json
 !utils.py
+!logger.py
 !plugins/
 !README.md
 !LICENSE
 !requirements.txt
+!config.yaml

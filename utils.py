@@ -11,22 +11,50 @@ import difflib
 import readline
 import base64
 import tiktoken
-import pyperclip
+import pyperclip  # type: ignore
 from PIL import Image
 from math import ceil
 import tempfile
 from io import BytesIO
 import pprint
-from typing import List, Dict, Tuple, Optional, ContextManager, Any, Callable, TypeVar, Union
+from typing import List, Dict, Tuple, Optional, ContextManager, Any, Callable, TypeVar, Union, Generator
 from enum import Enum
 from dataclasses import dataclass
 from pathlib import Path
 from contextlib import contextmanager
+import time
 
 # Type aliases
 T = TypeVar('T')
 InputValue = Union[str, int, float, bool, List[str], Dict[str, Any]]
 InputHandler = Callable[[str, Any], InputValue]
+
+# Global handlers
+input_handler = None
+file_handler = None
+diff_handler = None
+
+# Compatibility layer for existing imports
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    RED = '\033[91m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+    RESET = '\033[0m'
+    MAGENTA = '\033[95m'
+    WHITE = '\033[97m'
+
+    @staticmethod
+    def print_colored(text: str, color: str) -> None:
+        print(f"{color}{text}{Colors.RESET}")
+
+    @staticmethod
+    def print_header() -> None:
+        print(f"{Colors.HEADER}Welcome to LLT{Colors.RESET}")
 
 # Language mappings
 language_extension_map = {
@@ -34,48 +62,17 @@ language_extension_map = {
     "html": ".html", "css": ".css", "javascript": ".js", "typescript": ".ts",
     "json": ".json", "yaml": ".yaml", "c": ".c", "cpp": ".cpp",
     "rust": ".rs", "go": ".go", "csv": ".csv", "cuda": ".cu",
-    "jsx": ".jsx", "tsx": ".tsx"
+    "jsx": ".jsx", "tsx": ".tsx", "ruby": ".rb", "java": ".java",
+    "sql": ".sql", "dockerfile": "Dockerfile", "makefile": "Makefile"
 }
 
 language_comment_map = {
     'python': '#', 'shell': '#', 'text': '#', 'markdown': '#',
     'html': '<!--', 'css': '/*', 'javascript': '//', 'typescript': '//',
     'json': '//', 'yaml': '#', 'c': '//', 'cpp': '//',
-    'rust': '//', 'csv': '#', 'jsx': '//', 'tsx': '//'
+    'rust': '//', 'csv': '#', 'jsx': '//', 'tsx': '//',
+    'ruby': '#', 'java': '//', 'sql': '--', 'dockerfile': '#', 'makefile': '#'
 }
-
-class Colors:
-    """ANSI color codes and utility methods for terminal output."""
-    BLUE = "\033[34m"
-    GREEN = "\033[32m"
-    MAGENTA = "\033[35m"
-    YELLOW = "\033[93m"
-    WHITE = "\033[97m"
-    RED = "\033[31m"
-    BOLD = "\033[1m"
-    UNDERLINE = "\033[4m"
-    RESET = "\033[0m"
-    CYAN = "\033[36m"
-    LIGHT_BLUE = "\033[94m"
-    LIGHT_GREEN = "\033[92m"
-    PURPLE = "\033[95m"
-
-    @staticmethod
-    def print_colored(text: str, color: str = "") -> None:
-        print(f"{color}{text}{Colors.RESET}")
-
-    @staticmethod
-    def print_bold(text: str, color: str = "") -> None:
-        print(f"{Colors.BOLD}{color}{text}{Colors.RESET}")
-
-    @staticmethod
-    def pretty_print_dict(message: Dict) -> None:
-        formatted_message = pprint.pformat(message, indent=4)
-        Colors.print_colored(formatted_message, Colors.WHITE)
-
-    @staticmethod
-    def print_header():
-        Colors.print_colored("***** Welcome to llt, the little language terminal *****", Colors.YELLOW)
 
 class InputHandler:
     """Enhanced input handling with autocomplete and validation."""
@@ -92,11 +89,16 @@ class InputHandler:
         else:
             readline.parse_and_bind("tab: complete")
             
-    def _create_completer(self, options: Optional[List[str]] = None, 
-                         path_mode: bool = False) -> Callable[[str, int], Optional[str]]:
+    def _create_completer(self, 
+                         options: Optional[List[str]] = None, 
+                         path_mode: bool = False,
+                         base_dir: Optional[str] = None) -> Callable[[str, int], Optional[str]]:
         """Create a completer function based on mode."""
         def path_completer(text: str, state: int) -> Optional[str]:
             text = os.path.expanduser(text)
+            if base_dir and not os.path.isabs(text):
+                text = os.path.join(base_dir, text)
+            
             dir_path = os.path.dirname(text) or "."
             try:
                 if os.path.isdir(text):
@@ -106,6 +108,11 @@ class InputHandler:
                     files = [f for f in os.listdir(dir_path) if f.startswith(base)]
                 files = [os.path.join(dir_path, f) + ('/' if os.path.isdir(os.path.join(dir_path, f)) else '')
                         for f in files]
+                
+                # Make paths relative to base_dir if specified
+                if base_dir:
+                    files = [os.path.relpath(f, base_dir) for f in files]
+                    
                 return sorted(files)[state] if state < len(files) else None
             except (OSError, IndexError):
                 return None
@@ -113,7 +120,7 @@ class InputHandler:
         def list_completer(text: str, state: int) -> Optional[str]:
             if not options:
                 return None
-            matches = [opt for opt in options if opt.startswith(text)]
+            matches = [opt for opt in options if opt.startswith(text.lower())]
             return matches[state] if state < len(matches) else None
 
         return path_completer if path_mode else list_completer
@@ -123,6 +130,7 @@ class InputHandler:
                  options: Optional[List[str]] = None,
                  default: Any = None,
                  path_mode: bool = False,
+                 base_dir: Optional[str] = None,
                  validator: Optional[Callable[[str], bool]] = None,
                  transform: Optional[Callable[[str], Any]] = None) -> Any:
         """
@@ -133,10 +141,11 @@ class InputHandler:
             options: List of autocomplete options
             default: Default value if input is empty
             path_mode: Enable path completion mode
+            base_dir: Base directory for path completion
             validator: Optional validation function
             transform: Optional transformation function
         """
-        readline.set_completer(self._create_completer(options, path_mode))
+        readline.set_completer(self._create_completer(options, path_mode, base_dir))
         
         try:
             while True:
@@ -172,9 +181,90 @@ class InputHandler:
         finally:
             readline.set_completer(None)
 
+    def get_command_input(self, commands: List[str], prompt: str = "llt") -> Tuple[str, int]:
+        """Get command input with command autocompletion."""
+        try:
+            result = self.get_input(
+                prompt,
+                options=commands,
+                path_mode=False
+            )
+            return parse_cmd_string(result)
+        except (EOFError, KeyboardInterrupt):
+            print("\nExiting...")
+            sys.exit(0)
+
+    def get_path_input(self, 
+                      prompt: str,
+                      default: Optional[str] = None,
+                      base_dir: Optional[str] = None) -> str:
+        """Get path input with filesystem autocomplete."""
+        result = self.get_input(
+            prompt,
+            default=default,
+            path_mode=True,
+            base_dir=base_dir
+        )
+        
+        # Handle path resolution
+        if base_dir and not os.path.isabs(os.path.expanduser(result)):
+            return os.path.join(base_dir, result)
+        return os.path.expanduser(result)
+
+    def get_list_input(self, 
+                      options: List[str], 
+                      prompt: str = "", 
+                      allow_custom: bool = True) -> str:
+        """
+        Get input from a list of options with both number and text selection.
+        
+        Args:
+            options: List of available options
+            prompt: Optional prompt text
+            allow_custom: Allow custom input not in options list
+        """
+        if not options:
+            return ""
+        
+        if prompt:
+            print(prompt)
+        
+        # Display numbered options
+        for i, option in enumerate(options, 1):
+            print(f"{i}. {option}")
+        
+        def validate(value: str) -> bool:
+            if not value:
+                return True
+            try:
+                idx = int(value)
+                return 1 <= idx <= len(options)
+            except ValueError:
+                return allow_custom or any(opt.lower().startswith(value.lower()) for opt in options)
+        
+        def transform(value: str) -> str:
+            if not value:
+                return ""
+            try:
+                idx = int(value)
+                if 1 <= idx <= len(options):
+                    return options[idx - 1]
+            except ValueError:
+                matches = [opt for opt in options if opt.lower().startswith(value.lower())]
+                if len(matches) == 1:
+                    return matches[0]
+            return value
+        
+        return self.get_input(
+            "Enter number or text",
+            options=options,
+            validator=validate,
+            transform=transform
+        )
+
 class FileHandler:
     """File operations with safety checks and backups."""
-    
+
     @staticmethod
     def read(filepath: str) -> Optional[str]:
         """Safely read file content."""
@@ -211,6 +301,16 @@ class FileHandler:
         except Exception as e:
             Colors.print_colored(f"Error creating backup: {e}", Colors.RED)
             return None
+
+    @staticmethod
+    def encode_image_to_base64(image_path: str) -> str:
+        """Encode image to base64."""
+        try:
+            with open(image_path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
+        except Exception as e:
+            Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
+            return ""
 
 class DiffHandler:
     """Handle file diffs and changes."""
@@ -336,7 +436,7 @@ def parse_cmd_string(raw_cmd: str) -> Tuple[str, int]:
 
 # Context managers
 @contextmanager
-def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> ContextManager[str]:
+def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> Generator[str, None, None]:
     """Create and manage temporary file."""
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
@@ -615,7 +715,7 @@ class TempFileManager:
             raise
             
     @contextmanager
-    def temp_file(self, suffix: Optional[str] = None, content: Optional[str] = None) -> ContextManager[str]:
+    def temp_file(self, suffix: Optional[str] = None, content: Optional[str] = None) -> Generator[str, None, None]:
         """Context manager for temporary file usage."""
         path = None
         try:
@@ -872,45 +972,16 @@ def format_diff(diff_lines: List[DiffLine], show_line_numbers: bool = True) -> s
     return "\n".join(output) 
 
 # Compatibility layer for existing functions
-def path_input(prompt: str, default: Optional[str] = None) -> str:
-    """Legacy compatibility function for path input."""
-    if default:
-        prompt = f"{prompt} (default: {default})"
-    result = input(f"{prompt}: ").strip()
-    if not result and default:
-        return default
-    return os.path.expanduser(result)
+def path_input(prompt: str, default: Optional[str] = None, base_dir: Optional[str] = None) -> str:
+    return input_handler.get_path_input(prompt, default, base_dir)
 
-def list_input(options: List[str], prompt: str = "") -> str:
-    """Legacy compatibility function for list input."""
-    if not options:
-        return ""
-    
-    if prompt:
-        print(prompt)
-    
-    for i, option in enumerate(options, 1):
-        print(f"{i}. {option}")
-    
-    while True:
-        choice = input("Enter number or text: ").strip()
-        if not choice:
-            return ""
-        
-        try:
-            idx = int(choice)
-            if 1 <= idx <= len(options):
-                return options[idx - 1]
-        except ValueError:
-            matches = [opt for opt in options if opt.lower().startswith(choice.lower())]
-            if len(matches) == 1:
-                return matches[0]
-    
-    return ""
+def list_input(options: List[str], prompt: str = "", allow_custom: bool = True) -> str:
+    """Get input from a list of options with number and text selection."""
+    return input_handler.get_list_input(options, prompt, allow_custom)
 
 def content_input(prompt: str = "Enter content") -> str:
-    """Legacy compatibility function for content input."""
-    return input(f"{prompt}: ").strip()
+    """Get input from the user."""
+    return input_handler.get_input(prompt)
 
 def get_valid_index(messages: List[Dict], prompt: str, default: int = -1) -> int:
     """Legacy compatibility function for getting valid message index."""
@@ -930,13 +1001,30 @@ def get_valid_index(messages: List[Dict], prompt: str, default: int = -1) -> int
             print("Please enter a valid number")
 
 def llt_input(commands: List[str]) -> Tuple[str, int]:
-    """Legacy compatibility function for llt input."""
+    """Get user input with command autocompletion."""
     try:
+        # Set up command completion
+        def completer(text: str, state: int) -> Optional[str]:
+            options = [cmd for cmd in commands if cmd.startswith(text.lower())]
+            return options[state] if state < len(options) else None
+            
+        readline.set_completer(completer)
+        readline.set_completer_delims(" \t\n;")
+        if "libedit" in readline.__doc__:
+            readline.parse_and_bind("bind ^I rl_complete")
+        else:
+            readline.parse_and_bind("tab: complete")
+            
+        # Get input with completion
         raw_input = input("llt> ").strip()
         return parse_cmd_string(raw_input)
+        
     except (EOFError, KeyboardInterrupt):
         print("\nExiting...")
         sys.exit(0)
+    finally:
+        # Reset completer
+        readline.set_completer(None)
 
 def parse_cmd_string(raw_cmd: str) -> Tuple[str, int]:
     """Parse command string into command and index."""
@@ -945,10 +1033,10 @@ def parse_cmd_string(raw_cmd: str) -> Tuple[str, int]:
         return "", -1
 
     patterns = [
-        (r"^(\d+)([a-z]+)$", lambda m: (m.group(2), int(m.group(1)))),
-        (r"^([a-z]+)(\d+)$", lambda m: (m.group(1), int(m.group(2)))),
-        (r"^(\d+)-([a-z]+)$", lambda m: (m.group(2), -int(m.group(1)))),
-        (r"^([a-z]+)-(\d+)$", lambda m: (m.group(1), -int(m.group(2))))
+        (r"^(\d+)([a-z]+)$", lambda m: (m.group(2), int(m.group(1)))),           # "123cmd"
+        (r"^([a-z]+)(\d+)$", lambda m: (m.group(1), int(m.group(2)))),           # "cmd123"
+        (r"^(\d+)-([a-z]+)$", lambda m: (m.group(2), -int(m.group(1)))),         # "1-cmd"
+        (r"^([a-z]+)-(\d+)$", lambda m: (m.group(1), -int(m.group(2))))          # "cmd-1"
     ]
 
     for pattern, handler in patterns:
@@ -1088,7 +1176,7 @@ backup_manager = BackupManager()
 
 # Context managers
 @contextmanager
-def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> ContextManager[str]:
+def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> Generator[str, None, None]:
     """Create and manage temporary file."""
     fd, path = tempfile.mkstemp(suffix=suffix)
     try:
@@ -1104,4 +1192,4 @@ def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> Co
 
 def confirm_action(prompt: str) -> bool:
     """Prompt the user to confirm an action."""
-    return input(f"{prompt} (y/N) [N]: ").lower() == 'y' 
+    return input(f"{prompt} (y/N) [N]: ").strip().lower() == 'y'

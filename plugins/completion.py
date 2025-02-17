@@ -5,15 +5,23 @@ import yaml
 import json
 from typing import List, Dict, Any
 
+import anthropic
+
 from message import Message
-from utils import list_input, content_input, encode_image_to_base64, Colors
+from utils import (
+    Colors, file_handler, input_handler
+)
 from plugins import llt
-import anthropic  # For anthropic Client usage, if needed
 
 
 def load_config(path: str):
-    with open(path, 'r') as config_file:
-        return yaml.safe_load(config_file)
+    try:
+        with open(path, 'r') as config_file:
+            config = yaml.safe_load(config_file)
+            return config
+    except Exception as e:
+        Colors.print_colored(f"Error loading config: {e}", Colors.RED)
+        return {}
 
 
 def list_model_names(providers: Dict[str, Any]) -> List[str]:
@@ -28,7 +36,7 @@ def list_model_names(providers: Dict[str, Any]) -> List[str]:
     ]
 
 
-api_config = load_config(os.path.join(os.getenv("LLT_PATH", ""), "config.yaml"))
+api_config = load_config(os.path.join(os.getenv("LLT_DIR"), "config.yaml"))
 full_model_choices = list_model_names(api_config["providers"])
 
 
@@ -90,16 +98,16 @@ def send_request(
                         finish_reason = choice["finish_reason"]
 
                         if finish_reason is None:
-                            text = delta.get("content") or delta.get("reasoning_content") or ""
+                            text = delta.get("content") or delta.get("reasoning_content") or " "
                             print(text, end="", flush=True)
                             full_response_content += text
                         if finish_reason == "stop":
                             print("\r")
                             break
     except requests.RequestException as e:
-        print(f"Request failed: {e}")
+        Colors.print_colored(f"Request failed: {e}", Colors.RED)
         if e.response is not None:
-            print(f"Error details: {e.response.status_code}\n{e.response.text}")
+            Colors.print_colored(f"Error details: {e.response.status_code}\n{e.response.text}", Colors.RED)
 
     return {"role": "assistant", "content": full_response_content}
 
@@ -157,10 +165,9 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
     Encode image URLs into the proper format for different providers.
     Handles both file paths and regular URLs.
     """
-    # Create a deep copy of messages
     encoded_messages = None
     
-    for i, message in enumerate(encoded_messages):
+    for i, message in enumerate(messages):
         if message.get("role") == "user" and message.get("content") and isinstance(message["content"], list):
             for j, content_item in enumerate(message["content"]):
                 if content_item.get("type") == "image_url":
@@ -169,9 +176,11 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
                         if encoded_messages is None:
                             encoded_messages = json.loads(json.dumps(messages))
                         try:
-                            base64_image = encode_image_to_base64(image_url.replace("file://", ""))
+                            base64_image = file_handler.encode_image_to_base64(
+                                image_url.replace("file://", "")
+                            )
                             _, ext = os.path.splitext(image_url)
-                            if args.get('model').startswith("claude"):
+                            if args.get('model', '').startswith("claude"):
                                 encoded_messages[i]["content"] = {
                                     "type": "image",
                                     "source": {
@@ -188,9 +197,9 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
                                     }
                                 }
                         except Exception as e:
-                            print(f"Error encoding image: {e}")
-                            return None
-    return encoded_messages
+                            Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
+                            return messages
+    return encoded_messages or messages
                 
 
 @llt
@@ -233,7 +242,7 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
     ]
     
     print(f"\n{Colors.BOLD}Current Configuration:{Colors.RESET}")
-    selected = list_input(arg_choices)
+    selected = input_handler.list_input(arg_choices)
     if not selected:
         return messages
 
@@ -244,22 +253,22 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
     try:
         # manually handle different types
         if isinstance(current_value, bool):
-            new_value = list_input(["True", "False"]) == "True"
+            new_value = input_handler.list_input(["True", "False"]) == "True"
         elif key == "model":
-            new_value = list_input(full_model_choices)
+            new_value = input_handler.list_input(full_model_choices)
         elif key == "role":
-            new_value = list_input(["user", "assistant", "system", "tool"])
+            new_value = input_handler.list_input(["user", "assistant", "system", "tool"])
         elif isinstance(current_value, (int, float)):
             type_cast = type(current_value)
             while True:
-                val = content_input(f"Enter new {type_cast.__name__} value: ")
+                val = input_handler.content_input(f"Enter new {type_cast.__name__} value")
                 try:
                     new_value = type_cast(val)
                     break
                 except ValueError:
-                    print(f"{Colors.RED}Invalid {type_cast.__name__}.{Colors.RESET}")
+                    Colors.print_colored(f"Invalid {type_cast.__name__}.", Colors.RED)
         else:
-            new_value = content_input(f"Enter new value: ")
+            new_value = input_handler.content_input("Enter new value")
 
         if new_value is not None:
             args[key] = new_value
@@ -268,7 +277,7 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
             print(f"  {Colors.BOLD}New:{Colors.RESET} {new_value}")
 
     except Exception as e:
-        print(f"{Colors.RED}Error updating value: {str(e)}{Colors.RESET}")
+        Colors.print_colored(f"Error updating value: {str(e)}", Colors.RED)
 
     return messages
 
@@ -407,7 +416,7 @@ def use_tool(messages: List[Message], args: Dict, index: int = -1) -> List[Messa
 
 @llt
 def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    new_value = list_input(full_model_choices)
+    new_value = input_handler.list_input(full_model_choices)
     if new_value:
         args['model'] = new_value
         Colors.print_colored(f"Changed model to: {new_value}", Colors.GREEN)

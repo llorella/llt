@@ -8,32 +8,18 @@ from pathlib import Path
 import traceback
 from plugins import llt
 from utils import (
-    path_input,
-    get_project_dir,
-    
-    get_valid_index,
-    confirm_action,
-    content_input,
-    list_input,
-    
-    parse_markdown_for_codeblocks,
-    language_extension_map,
+    Colors, path_input, get_project_dir, get_valid_index,
+    confirm_action, content_input, list_input,
+    parse_markdown_for_codeblocks, language_extension_map,
     detect_language_from_content,
-    
-    generate_diff,
-    format_diff,
-    
-    TempFileManager,
-    BackupManager,
-    
-    encode_image_to_base64,
-    
-    Colors
+    generate_diff, format_diff,
+    TempFileManager, BackupManager,
+    file_handler, input_handler,
+    encode_image_to_base64
 )
 
 temp_manager = TempFileManager()
 backup_manager = BackupManager()
-
 
 def iter_blocks(
     message: Dict,
@@ -124,7 +110,9 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     target_lang = args.get('code_block')
     if not args.get('non_interactive') and not args.get('auto'):
         index = get_valid_index(messages, "execute code blocks from", index)
-        target_lang = list_input(language_extension_map.keys(), f"Enter a language (default is {target_lang})").strip() or target_lang
+        target_lang = list_input(language_extension_map.keys(), f"Enter a language (default is {target_lang})") or target_lang
+    else:
+        target_lang = args.get('language', target_lang)
 
     timeout = int(args.get('timeout', 30))
 
@@ -144,7 +132,6 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
                 if cmd:
                     results.append(f"<command>\n{cmd}\n</command>")
                 if output:
-                    # Format the output with code block and language
                     formatted_output = f"<output>\n{output}\n</output>"
                     results.append(formatted_output)
             except Exception as e:
@@ -152,16 +139,9 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
                 results.append(error_msg)
 
     if results:
-        """ messages.append({
-            "role": args.role,
-            "content": "\n\n".join(results)
-        }) 
-        or, replace message with results
-        """
         messages[index]["content"] = "\n\n".join(results)
 
-
-    return messages #, ["xml_wrap", "content", "complete"]
+    return messages
 
 
 @llt
@@ -200,22 +180,27 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
                 backup_manager.create_backup(str(filepath))
 
             if show_diff:
-                old_content = filepath.read_text()
-                diff = generate_diff(old_content, block["content"])
-                print("\nChanges to be applied:")
-                print(format_diff(diff))
+                old_content = file_handler.read(str(filepath))
+                if old_content is not None:
+                    diff = generate_diff(old_content, block["content"])
+                    print("\nChanges to be applied:")
+                    print(format_diff(diff))
 
             if force or confirm_action("Write changes?"):
                 filepath.parent.mkdir(parents=True, exist_ok=True)
-                filepath.write_text(block["content"])
-                modified.append(str(filepath))
+                if file_handler.write(str(filepath), block["content"]):
+                    modified.append(str(filepath))
+                else:
+                    skipped.append(str(filepath))
             else:
                 skipped.append(str(filepath))
         else:
             if force or confirm_action(f"Create new file {filepath}?"):
                 filepath.parent.mkdir(parents=True, exist_ok=True)
-                filepath.write_text(block["content"])
-                modified.append(str(filepath))
+                if file_handler.write(str(filepath), block["content"]):
+                    modified.append(str(filepath))
+                else:
+                    skipped.append(str(filepath))
             else:
                 skipped.append(str(filepath))
 
@@ -246,16 +231,18 @@ def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         print("No messages to edit.")
         return messages
 
-    msg_index = get_valid_index(messages, "edit content of", index)
+    if not args.get('non_interactive'):
+        msg_index = get_valid_index(messages, "edit content of", index)
+    else:
+        msg_index = index
+
     editor = args.get('editor') or os.environ.get("EDITOR", "vim")
 
     with temp_manager.temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
         try:
             subprocess.run([editor, temp_path], check=True)
-            with open(temp_path) as f:
-                new_content = f.read()
-
-            if new_content != messages[msg_index]["content"]:
+            new_content = file_handler.read(temp_path)
+            if new_content is not None and new_content != messages[msg_index]["content"]:
                 if args.get('backup', True):
                     backup_manager.create_backup(temp_path)
                 messages[msg_index]["content"] = new_content
@@ -332,16 +319,18 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         file_path = args.get('file')
 
     if not os.path.exists(file_path):
-        print(f"Error: File not found at {file_path}")
+        Colors.print_colored(f"Error: File not found at {file_path}", Colors.RED)
         return messages
 
     _, ext = os.path.splitext(file_path)
     if ext.lower() in [".png", ".jpeg", ".jpg", ".gif", ".webp"]:
         prompt = (args.get('prompt') if args.get('non_interactive') else content_input()) or args.get('prompt')
         try:
-            encoded_image = encode_image_to_base64(file_path)
+            encoded_image = file_handler.encode_image_to_base64(file_path)
+            if not encoded_image:
+                return messages
         except Exception as e:
-            print(f"Failed to encode image: {e}")
+            Colors.print_colored(f"Failed to encode image: {e}", Colors.RED)
             return messages
         
         messages.append({
@@ -352,10 +341,10 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
             ],
         })
     else:
-        with open(file_path, "r") as file:
-            data = file.read()
-        if ext.lower() in language_extension_map:
-            data = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{data}\n```"
-        messages.append({"role": args.get('role', 'user'), "content": data})
+        content = file_handler.read(file_path)
+        if content is not None:
+            if ext.lower() in language_extension_map:
+                content = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{content}\n```"
+            messages.append({"role": args.get('role', 'user'), "content": content})
 
     return messages

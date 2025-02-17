@@ -2,8 +2,11 @@ import os, sys
 import json
 import base64
 from dataclasses import dataclass
-from typing import List, Dict, Optional, Union
+from typing import List, Dict
+from typing import Optional
 import traceback
+from utils import Colors, content_input, get_valid_index
+from logger import llt_logger
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
@@ -14,8 +17,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 from plugins import llt
-from logger import llt_logger
-from utils import Colors, content_input, get_valid_index
 
 # Gmail API configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']
@@ -124,8 +125,8 @@ def send_email(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
             to_email = args.get('to') or config.get('default_to')
             subject = args.get('subject') or config.get('default_subject', 'Message from LLT')
         else:
-            to_email = content_input("To email address: ", default=config.get('default_to', ''))
-            subject = content_input("Subject: ", default=config.get('default_subject', 'Message from LLT'))
+            to_email = content_input("To email address", default=config.get('default_to', ''))
+            subject = content_input("Subject", default=config.get('default_subject', 'Message from LLT'))
         
         if not to_email:
             error_msg = "No recipient email address provided"

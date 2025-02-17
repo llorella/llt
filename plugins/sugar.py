@@ -35,7 +35,7 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     existing_tags = load_xml_tags()
     
     tag_name = args.get('xml_wrap')
-    if not args.get('auto') and (not tag_name or not args.get('non_interactive')):
+    if not args.get('non_interactive') and not args.get('auto'):
         # If there are existing tags, offer them as options
         if existing_tags:
             tag_name = list_input(existing_tags, f"Select or enter new tag name (default is {args.get('xml_wrap')})")
@@ -51,6 +51,28 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
             save_xml_tags(existing_tags)
             llt_logger.log_info(f"New XML tag added: {tag_name}")
 
+    return messages
+
+def parse_xml_content(content: str) -> str:
+    """
+    Parse XML content from a message.
+
+    This function attempts to interpret the provided string as XML and extracts all textual content
+    found within its elements. If the input is not valid XML, the original content is returned unchanged.
+    """
+    import xml.etree.ElementTree as ET
+    try:
+        root = ET.fromstring(content.strip())
+        return ''.join(root.itertext()).strip()
+    except ET.ParseError:
+        return content
+
+@llt
+def parse_xml(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+    """Parse XML content from message."""
+    if not args.get('non_interactive'):
+        index = get_valid_index(messages, "parse XML content of", index)
+    messages[index]["content"] = parse_xml_content(messages[index]["content"])
     return messages
 
 @llt
@@ -83,8 +105,8 @@ def code_block(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     flag: code_block
     short: cb
     """
-    language = args.get('code_block')
-    if not args.get('non_interactive') or not args.get('auto'):
+    language = args.get('code_block', 'bash')
+    if not args.get('non_interactive') and not args.get('auto'):
         index = get_valid_index(messages, "wrap in code block", index)
         language = list_input(list(language_extension_map.keys()), f"Select programming language (default is {language})") or language
 

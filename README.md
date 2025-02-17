@@ -1,14 +1,7 @@
-# llt (Little Language Terminal)
+# llt (little language tool)
 
-A powerful command-line interface and programmatic tool for managing AI conversations through transformative operations on message logs. llt provides a flexible plugin ecosystem for tasks like code editing, file manipulation, image handling, and model interactions.
+A powerful command-line interface and programmatic tool for managing AI conversations through transformative operations on message logs. llt provides a flexible plugin ecosystem for tasks like code editing, file manipulation, model interactions, synthetic data generation, and more.
 
-## Core Features
-
-- 🔄 **Stateful Conversations**: Preserve and transform conversation context through language logs
-- 🔌 **Plugin System**: Extensible architecture for conversation transformations
-- 🤖 **Multi-Model Support**: Works with various LLM providers (Claude, GPT-4, DeepSeek, etc.)
-- 🛠️ **Tool Integration**: Execute code, manage files, and integrate with external tools
-- 📦 **Programmatic API**: Use as a CLI tool or integrate into applications
 
 ## Installation
 
@@ -18,22 +11,57 @@ git clone https://github.com/llorella/llt.git
 cd llt
 ```
 
-2. Install dependencies:
+2. Install `uv`:
 ```bash
-pip install -r requirements.txt
+# On Unix-like systems (Linux, macOS)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# On Windows (PowerShell)
+irm https://astral.sh/uv/install.ps1 | iex
 ```
 
-3. Set up environment:
+3. Create and activate a virtual environment with `uv`:
+```bash
+uv venv
+source .venv/bin/activate  # On Unix-like systems
+# Or on Windows:
+# .venv\Scripts\activate
+```
+
+4. Install dependencies using `uv`:
+```bash
+uv pip install -r requirements.txt
+```
+
+5. Install llt as a CLI tool:
+```bash
+# Make the main.py executable
+chmod +x main.py
+
+# Create a symlink in a directory in your PATH
+# Option 1: User-specific installation (recommended)
+mkdir -p ~/.local/bin
+ln -s "$(pwd)/main.py" ~/.local/bin/llt
+
+# Option 2: System-wide installation (requires sudo)
+# sudo ln -s "$(pwd)/main.py" /usr/local/bin/llt
+
+# Verify the installation
+which llt
+llt --help
+```
+
+6. Set up environment:
 ```bash
 # Set data directory
 export LLT_PATH=$HOME/.llt
 
-# Create config file
-mkdir -p $LLT_PATH
-cp config.example.yaml $LLT_PATH/config.yaml
+# Add this to your shell's rc file (.bashrc, .zshrc, etc.) to make it permanent
+echo 'export LLT_PATH=$HOME/.llt' >> ~/.bashrc  # or ~/.zshrc
 
-# Add your API keys
-vim $LLT_PATH/config.yaml
+echo 'export LLT_DIR=$HOME/llt' >> ~/.bashrc  # or ~/.zshrc
+
+
 ```
 
 ## Usage
@@ -85,37 +113,6 @@ providers:
       chat: [latest]
 ```
 
-### Programmatic Usage
-
-```typescript
-// Example: Managing conversations programmatically
-async function llResponse(sessionId: string, ll_name: string): Promise<string> {
-    // Write conversation to temp file
-    const messages = getConversationMessages(sessionId);
-    const tempFile = writeTempFile(messages);
-
-    // Different conversation mediators
-    if (ll_name === "conversation-manager") {
-        return await run_command([
-            "llt", "--model", "deepseek-chat",
-            "--load", "coquiz/conversation-manager-1",
-            "--attach", tempFile,
-            "--complete", "-n"
-        ]);
-    }
-
-    // Tool usage example
-    if (ll_name === "code-executor") {
-        return await run_command([
-            "llt", "--model", "claude-sonnet-3-5",
-            "--load", "code-executor",
-            "--execute", "bash",
-            "--xml_wrap", "exampleOutput",
-            "--fold", "--complete", "-n"
-        ]);
-    }
-}
-```
 
 ### Plugin Development
 
