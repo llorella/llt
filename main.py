@@ -11,6 +11,7 @@ compatibility with the existing plugin system.
 import os
 import sys
 import time
+import json
 import argparse
 import traceback
 from typing import List, Dict, Callable, Optional, TypeVar, Any, Tuple
@@ -19,7 +20,7 @@ from functools import reduce
 from collections import deque
 
 from logger import llt_logger
-from utils import Colors, llt_input, parse_cmd_string
+from utils import Colors, llt_input, parse_cmd_string, confirm_action
 from plugins import (
     load_plugins,
     add_plugin_arguments,
@@ -184,16 +185,15 @@ def process_command(
             
             # Handle LLT role messages
             command_queue = state.command_queue.copy()
-            if new_messages and new_messages[-1]["role"] == "llt":
+            if new_messages and isinstance(new_messages[-1], dict) and new_messages[-1].get("role") == "tool":
                 if not state.context.get("non_interactive"):
                     if input("Add this LLT command to queue? (y/N): ").lower() == 'y':
-                        cmd_name, index = parse_cmd_string(new_messages[-1]["content"])
+                        cmd_name, index = parse_cmd_string(new_messages[-1].get("content", ""))
                         command_queue.append(ScheduledCommand(cmd_name, index))
                         new_messages = new_messages[:-1]
                 else:
-                    command_queue.append(
-                        ScheduledCommand(new_messages[-1]["content"], cmd.index)
-                    )
+                    cmd_name, index = parse_cmd_string(new_messages[-1].get("content", ""))
+                    command_queue.append(ScheduledCommand(cmd_name, index))
                     new_messages = new_messages[:-1]
             
             # Create new state with updates from plugin
@@ -289,7 +289,7 @@ def main() -> None:
     args = parser.parse_args()
     
     # Initialize directories
-    initialize_environment([args.ll_dir, args.exec_dir, args.cmd_dir])
+    initialize_environment([args.ll_dir, args.exec_dir])
     
     # Create initial state
     initial_state = AppState(

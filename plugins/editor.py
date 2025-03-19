@@ -6,15 +6,16 @@ import json
 from typing import List, Dict, Optional, Callable, Iterator
 from pathlib import Path
 import traceback
+
+from message import Message
 from plugins import llt
 from utils import (
-    Colors, path_input, get_project_dir, get_valid_index,
-    confirm_action, content_input, list_input,
+    Colors, get_project_dir, get_valid_index,
+    confirm_action,
     parse_markdown_for_codeblocks, language_extension_map,
     detect_language_from_content,
-    generate_diff, format_diff,
     TempFileManager, BackupManager,
-    file_handler, input_handler,
+    file_handler, input_handler, diff_handler,
     encode_image_to_base64
 )
 
@@ -110,7 +111,7 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     target_lang = args.get('code_block')
     if not args.get('non_interactive') and not args.get('auto'):
         index = get_valid_index(messages, "execute code blocks from", index)
-        target_lang = list_input(language_extension_map.keys(), f"Enter a language (default is {target_lang})") or target_lang
+        target_lang = input_handler.get_list_input(list(language_extension_map.keys()), f"Enter a language (default is {target_lang})")
     else:
         target_lang = args.get('language', target_lang)
 
@@ -161,6 +162,8 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
 
     modified = []
     skipped = []
+    
+    project_dir = get_project_dir(args)
 
     for block in iter_blocks(
         messages[msg_index],
@@ -172,22 +175,25 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         suggested_ext = language_extension_map.get(block["language"], ".txt")
         default_name = block["filename"] or f"block_{block['index']}{suggested_ext}"
 
-        filename = path_input(default_name, get_project_dir(args))
-        filepath = Path(filename)
-
-        if filepath.exists():
+        filepath = input_handler.get_path_input(
+            f"Enter filename for {block['language']} block (default is {default_name})",
+            default=default_name,
+            base_dir=project_dir
+        )
+        
+        if os.path.exists(filepath):
             if create_backups:
                 backup_manager.create_backup(str(filepath))
 
             if show_diff:
                 old_content = file_handler.read(str(filepath))
                 if old_content is not None:
-                    diff = generate_diff(old_content, block["content"])
+                    diff = diff_handler.generate(old_content, block["content"])
                     print("\nChanges to be applied:")
-                    print(format_diff(diff))
+                    print(diff_handler.format(diff))
 
             if force or confirm_action("Write changes?"):
-                filepath.parent.mkdir(parents=True, exist_ok=True)
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
                 if file_handler.write(str(filepath), block["content"]):
                     modified.append(str(filepath))
                 else:
@@ -196,7 +202,7 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
                 skipped.append(str(filepath))
         else:
             if force or confirm_action(f"Create new file {filepath}?"):
-                filepath.parent.mkdir(parents=True, exist_ok=True)
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
                 if file_handler.write(str(filepath), block["content"]):
                     modified.append(str(filepath))
                 else:
@@ -236,7 +242,7 @@ def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     else:
         msg_index = index
 
-    editor = args.get('editor') or os.environ.get("EDITOR", "vim")
+    editor = os.environ.get("EDITOR", "vim")
 
     with temp_manager.temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
         try:
@@ -262,10 +268,7 @@ def paste(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     flag: paste
     short:
     """
-    messages.append({
-        "role": "user",
-        "content": pyperclip.paste()
-    })
+    messages.append(Message(role=args.get('role'), content=pyperclip.paste()))
     return messages
 
 
@@ -314,9 +317,9 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     short: f
     """
     if not args.get('file') or not args.get('non_interactive'):
-        file_path = path_input(args.get('file'), os.getcwd())
+        file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), base_dir=os.getcwd())
     else:
-        file_path = args.get('file')
+        file_path = args.get('file', None)
 
     if not os.path.exists(file_path):
         Colors.print_colored(f"Error: File not found at {file_path}", Colors.RED)
@@ -324,7 +327,7 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
 
     _, ext = os.path.splitext(file_path)
     if ext.lower() in [".png", ".jpeg", ".jpg", ".gif", ".webp"]:
-        prompt = (args.get('prompt') if args.get('non_interactive') else content_input()) or args.get('prompt')
+        prompt = (args.get('prompt') if args.get('non_interactive') else input_handler.get_input("Enter prompt")) or args.get('prompt')
         try:
             encoded_image = file_handler.encode_image_to_base64(file_path)
             if not encoded_image:

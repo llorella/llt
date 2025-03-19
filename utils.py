@@ -27,12 +27,6 @@ import time
 # Type aliases
 T = TypeVar('T')
 InputValue = Union[str, int, float, bool, List[str], Dict[str, Any]]
-InputHandler = Callable[[str, Any], InputValue]
-
-# Global handlers
-input_handler = None
-file_handler = None
-diff_handler = None
 
 # Compatibility layer for existing imports
 class Colors:
@@ -204,7 +198,7 @@ class InputHandler:
             default=default,
             path_mode=True,
             base_dir=base_dir
-        )
+        ).strip()  # Strip any trailing whitespace
         
         # Handle path resolution
         if base_dir and not os.path.isabs(os.path.expanduser(result)):
@@ -415,8 +409,24 @@ def get_valid_index(messages: List[Dict], prompt: str, default: int = -1) -> int
         transform=transform
     )
 
-def parse_cmd_string(raw_cmd: str) -> Tuple[str, int]:
+def parse_cmd_string(raw_cmd: Union[str, Dict[str, Any]]) -> Tuple[str, int]:
     """Parse command string into command and index."""
+    # Handle dictionary input
+    if isinstance(raw_cmd, dict):
+        # Extract text content from the dictionary
+        if isinstance(raw_cmd.get("content"), str):
+            raw_cmd = raw_cmd["content"]
+        else:
+            # Handle potential list of content parts
+            text_parts = [
+                part["text"] for part in raw_cmd.get("content", [])
+                if isinstance(part, dict) and part.get("type") == "text"
+            ]
+            raw_cmd = "".join(text_parts)
+    
+    if not isinstance(raw_cmd, str):
+        return "", -1
+        
     raw_cmd = raw_cmd.strip()
     if not raw_cmd:
         return "", -1
@@ -483,7 +493,7 @@ def generate_diff(old_content: str, new_content: str, filename: str = "") -> str
         fromfile=filename + " (old)" if filename else "",
         tofile=filename + " (new)" if filename else "",
         lineterm=""
-    )
+    )   
     return "".join(diff)
 
 def prompt_and_write_file(final_path: str, new_content: str, diff_text: str) -> bool:
@@ -596,13 +606,17 @@ def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
     return blocks
 
 # File operations utilities
-def get_project_dir(args: Dict, default_name: str = "untitled") -> str:
+def get_project_dir(args: Dict[str, Any]) -> str:
     """Determine project directory based on command arguments."""
-    ll_dir_abs = os.path.abspath(args.ll_dir)
-    load_abs = os.path.abspath(args.load)
+    ll_dir_abs = os.path.abspath(args.get("ll_dir", os.getcwd()))
+    load_abs = os.path.abspath(args["load"])    
     rel = os.path.relpath(load_abs, ll_dir_abs)
     base, ext = os.path.splitext(rel)
-    project_dir = get_path_input(os.path.join(args.exec_dir, rel or os.getcwd()), args.exec_dir)
+    project_dir = input_handler.get_path_input(
+        "Enter project directory",
+        default=os.path.join(args['exec_dir'], base or os.getcwd()),
+        base_dir=args['exec_dir']
+    )
     return project_dir
 
 def process_file_changes(
@@ -664,7 +678,6 @@ def make_file_summary(modified: List[str], skipped: List[str]) -> str:
         
     return "\n".join(summary)
 
-# Image utilities
 def is_base64(text: str) -> bool:
     try:
         base64.b64decode(text)
@@ -885,92 +898,6 @@ def confirm_action(prompt: str) -> bool:
     """Prompt the user to confirm an action."""
     return input(f"{prompt} (y/N) [N]: ").lower() == 'y'
 
-class DiffType(Enum):
-    ADDED = '+'
-    REMOVED = '-'
-    CHANGED = '~'
-    UNCHANGED = ' '
-@dataclass
-class DiffLine:
-    type: DiffType
-    content: str
-    line_number_old: Optional[int] = None
-    line_number_new: Optional[int] = None
-    def colorize(self) -> str:
-        """Return colorized version of the line content."""
-        color_map = {
-            DiffType.ADDED: Colors.GREEN,
-            DiffType.REMOVED: Colors.RED,
-            DiffType.CHANGED: Colors.YELLOW,
-            DiffType.UNCHANGED: ''
-        }
-        return f"{color_map[self.type]}{self.content}{Colors.RESET}"
-    
-def generate_diff(old_content: str, new_content: str, context_lines: int = 3) -> List[DiffLine]:
-    """Generate detailed diff with line numbers and change types."""
-    old_lines = old_content.splitlines()
-    new_lines = new_content.splitlines()
-    
-    differ = difflib.SequenceMatcher(None, old_lines, new_lines)
-    diff_lines = []
-    
-    for tag, i1, i2, j1, j2 in differ.get_opcodes():
-        if tag == 'equal':
-            start = max(i1, i1 + (i2 - i1 - context_lines))
-            end = min(i2, i1 + context_lines)
-            for i, line in enumerate(old_lines[start:end], start):
-                diff_lines.append(DiffLine(
-                    type=DiffType.UNCHANGED,
-                    content=line,
-                    line_number_old=i + 1,
-                    line_number_new=j1 + (i - i1) + 1
-                ))
-        elif tag == 'replace':
-            for i, line in enumerate(old_lines[i1:i2], i1):
-                diff_lines.append(DiffLine(
-                    type=DiffType.REMOVED,
-                    content=line,
-                    line_number_old=i + 1
-                ))
-            for j, line in enumerate(new_lines[j1:j2], j1):
-                diff_lines.append(DiffLine(
-                    type=DiffType.ADDED,
-                    content=line,
-                    line_number_new=j + 1
-                ))
-        elif tag == 'delete':
-            for i, line in enumerate(old_lines[i1:i2], i1):
-                diff_lines.append(DiffLine(
-                    type=DiffType.REMOVED,
-                    content=line,
-                    line_number_old=i + 1
-                ))
-        elif tag == 'insert':
-            for j, line in enumerate(new_lines[j1:j2], j1):
-                diff_lines.append(DiffLine(
-                    type=DiffType.ADDED,
-                    content=line,
-                    line_number_new=j + 1
-                ))
-    
-    return diff_lines
-def format_diff(diff_lines: List[DiffLine], show_line_numbers: bool = True) -> str:
-    """Format diff lines for display."""
-    output = []
-    max_line_num_width = 5
-    
-    for line in diff_lines:
-        if show_line_numbers:
-            old_num = str(line.line_number_old or '').rjust(max_line_num_width)
-            new_num = str(line.line_number_new or '').rjust(max_line_num_width)
-            line_info = f"{old_num}│{new_num}│"
-        else:
-            line_info = f"{line.type.value} "
-            
-        output.append(f"{line_info} {line.colorize()}")
-        
-    return "\n".join(output) 
-
 # Compatibility layer for existing functions
 def path_input(prompt: str, default: Optional[str] = None, base_dir: Optional[str] = None) -> str:
     return input_handler.get_path_input(prompt, default, base_dir)
@@ -982,23 +909,6 @@ def list_input(options: List[str], prompt: str = "", allow_custom: bool = True) 
 def content_input(prompt: str = "Enter content") -> str:
     """Get input from the user."""
     return input_handler.get_input(prompt)
-
-def get_valid_index(messages: List[Dict], prompt: str, default: int = -1) -> int:
-    """Legacy compatibility function for getting valid message index."""
-    if not messages:
-        return default
-    
-    while True:
-        try:
-            idx_input = input(f"Enter index of message to {prompt} [{default}]: ").strip()
-            if not idx_input:
-                return default
-            idx = int(idx_input)
-            if -len(messages) <= idx < len(messages):
-                return idx
-            print(f"Index must be between {-len(messages)} and {len(messages)-1}")
-        except ValueError:
-            print("Please enter a valid number")
 
 def llt_input(commands: List[str]) -> Tuple[str, int]:
     """Get user input with command autocompletion."""
@@ -1025,25 +935,6 @@ def llt_input(commands: List[str]) -> Tuple[str, int]:
     finally:
         # Reset completer
         readline.set_completer(None)
-
-def parse_cmd_string(raw_cmd: str) -> Tuple[str, int]:
-    """Parse command string into command and index."""
-    raw_cmd = raw_cmd.strip()
-    if not raw_cmd:
-        return "", -1
-
-    patterns = [
-        (r"^(\d+)([a-z]+)$", lambda m: (m.group(2), int(m.group(1)))),           # "123cmd"
-        (r"^([a-z]+)(\d+)$", lambda m: (m.group(1), int(m.group(2)))),           # "cmd123"
-        (r"^(\d+)-([a-z]+)$", lambda m: (m.group(2), -int(m.group(1)))),         # "1-cmd"
-        (r"^([a-z]+)-(\d+)$", lambda m: (m.group(1), -int(m.group(2))))          # "cmd-1"
-    ]
-
-    for pattern, handler in patterns:
-        if match := re.match(pattern, raw_cmd):
-            return handler(match)
-
-    return raw_cmd, -1
 
 # New DiffHandler implementation
 @dataclass
@@ -1127,69 +1018,6 @@ def encode_image_to_base64(image_path: str) -> str:
         Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
         return ""
 
-def count_tokens(messages: List[Dict], model: str = "gpt-4") -> int:
-    """Legacy compatibility function for token counting."""
-    content = "".join(
-        msg["content"] if isinstance(msg["content"], str)
-        else "".join(c["text"] for c in msg["content"] if c.get("type") == "text")
-        for msg in messages
-    )
-    encoding = tiktoken.encoding_for_model(model)
-    return 4 + len(encoding.encode(content))
 
-def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
-    """Legacy compatibility function for markdown parsing."""
-    code_pattern = re.compile(r"```(\w+)\n(.*?)\n```", re.DOTALL)
-    matches = code_pattern.findall(markdown)
-    blocks = []
-    
-    for i, (language, code) in enumerate(matches):
-        filename = None
-        if language in language_comment_map:
-            comment_prefix = language_comment_map[language]
-            first_line = code.split('\n')[0].strip()
-            if first_line.startswith(comment_prefix):
-                potential_filename = first_line[len(comment_prefix):].strip()
-                if potential_filename and '.' in potential_filename:
-                    filename = potential_filename
-        
-        blocks.append({
-            "language": language,
-            "content": code.strip(),
-            "filename": filename,
-            "index": i
-        })
-    
-    return blocks
-
-def get_project_dir(args: Dict, default_name: str = "untitled") -> str:
-    """Legacy compatibility function for getting project directory."""
-    ll_dir_abs = os.path.abspath(args.get('ll_dir', ''))
-    load_abs = os.path.abspath(args.get('load', ''))
-    rel = os.path.relpath(load_abs, ll_dir_abs)
-    project_dir = path_input(os.path.join(args.get('exec_dir', ''), rel or os.getcwd()), args.get('exec_dir'))
-    return project_dir
-
-# Initialize global handlers
 temp_manager = TempFileManager()
 backup_manager = BackupManager()
-
-# Context managers
-@contextmanager
-def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> Generator[str, None, None]:
-    """Create and manage temporary file."""
-    fd, path = tempfile.mkstemp(suffix=suffix)
-    try:
-        if content is not None:
-            with os.fdopen(fd, 'w') as f:
-                f.write(content)
-        else:
-            os.close(fd)
-        yield path
-    finally:
-        if os.path.exists(path):
-            os.remove(path)
-
-def confirm_action(prompt: str) -> bool:
-    """Prompt the user to confirm an action."""
-    return input(f"{prompt} (y/N) [N]: ").strip().lower() == 'y'

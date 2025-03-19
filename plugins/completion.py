@@ -3,13 +3,13 @@ import requests
 import os
 import yaml
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Iterable
 
 import anthropic
 
 from message import Message
 from utils import (
-    Colors, file_handler, input_handler
+    Colors, file_handler, input_handler, InputValue
 )
 from plugins import llt
 
@@ -36,7 +36,7 @@ def list_model_names(providers: Dict[str, Any]) -> List[str]:
     ]
 
 
-api_config = load_config(os.path.join(os.getenv("LLT_DIR"), "config.yaml"))
+api_config = load_config(os.path.join(os.getenv("LLT_DIR", ""), "config.yaml"))
 full_model_choices = list_model_names(api_config["providers"])
 
 
@@ -60,9 +60,9 @@ def get_provider_details(model_name: str):
 def send_request(
     completion_url: str,
     api_key_string: str,
-    messages: List[Dict[str, Any]],
+    messages: List[Message],
     args: Dict[str, Any]
-) -> Dict[str, Any]:
+) -> Message:
     """
     Generic request to a completion endpoint that streams tokens.
     """
@@ -109,10 +109,10 @@ def send_request(
         if e.response is not None:
             Colors.print_colored(f"Error details: {e.response.status_code}\n{e.response.text}", Colors.RED)
 
-    return {"role": "assistant", "content": full_response_content}
+    return Message(role="assistant", content=full_response_content)
 
 
-def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any]) -> Dict[str, Any]:
+def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> Message:
     """
     Use the Anthropic python client for streaming completions with tool support.
     """
@@ -149,15 +149,15 @@ def get_anthropic_completion(messages: List[Dict[str, Any]], args: Dict[str, Any
             print(text, end="", flush=True)
             response_content += text
         print("\r")
-    return {"role": "assistant", "content": response_content}
+    return Message(role="assistant", content=response_content)
 
 
     
-def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Dict[str, Any]:
+def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Message:
     """
     Placeholder for a local LLM or other offline approach.
     """
-    return {"role": "assistant", "content": "[local model output]"}
+    return Message(role="assistant", content="TODO: Reintegrate local LLM support. This is a placeholder response.")
 
 @llt
 def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1) -> List[Message]:
@@ -181,7 +181,7 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
                             )
                             _, ext = os.path.splitext(image_url)
                             if args.get('model', '').startswith("claude"):
-                                encoded_messages[i]["content"] = {
+                                encoded_messages[i]["content"][j] = {
                                     "type": "image",
                                     "source": {
                                         "type": "base64",
@@ -199,6 +199,7 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
                         except Exception as e:
                             Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
                             return messages
+                        
     return encoded_messages or messages
                 
 
@@ -211,7 +212,7 @@ def complete(messages: List[Message], args: Dict, index: int = -1) -> List[Messa
     flag: complete
     short:
     """
-    provider, api_key, completion_url = get_provider_details(args.get('model'))
+    provider, api_key, completion_url = get_provider_details(args.get('model', "claude-3-5-sonnet-20241022"))
 
     messages_with_images = encode_images(messages.copy(), args)
 
@@ -234,41 +235,41 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
     Default: false
     flag: modify_args
     """
-    args_dict = args
-
+    
     arg_choices = [
-        f"{key} ({type(value).__name__}): {Colors.YELLOW}{value}{Colors.RESET}"
-        for key, value in args_dict.items()
+        f"{key} ({type(value).__name__}) - {Colors.YELLOW}{value}{Colors.RESET}"
+        for key, value in args.items()
     ]
     
+    assert len(arg_choices) > 0, "No arguments to modify. Please add some arguments first."
     print(f"\n{Colors.BOLD}Current Configuration:{Colors.RESET}")
-    selected = input_handler.list_input(arg_choices)
+    selected = input_handler.get_list_input(options=arg_choices, prompt="Select an argument to modify:")
     if not selected:
         return messages
 
     key = selected.split()[0]
-    current_value = args_dict.get(key)
+    current_value = args.get(key)
     print(f"\nCurrent value of {Colors.BOLD}{key}{Colors.RESET}: {Colors.YELLOW}{current_value}{Colors.RESET}")
 
+    new_value: InputValue = ""
     try:
-        # manually handle different types
         if isinstance(current_value, bool):
-            new_value = input_handler.list_input(["True", "False"]) == "True"
+            new_value = input_handler.get_list_input(["True", "False"]) == "True"
         elif key == "model":
-            new_value = input_handler.list_input(full_model_choices)
+            new_value = input_handler.get_list_input(full_model_choices)
         elif key == "role":
-            new_value = input_handler.list_input(["user", "assistant", "system", "tool"])
+            new_value = input_handler.get_list_input(["user", "assistant", "system", "tool"])
         elif isinstance(current_value, (int, float)):
             type_cast = type(current_value)
             while True:
-                val = input_handler.content_input(f"Enter new {type_cast.__name__} value")
+                val = input_handler.get_input(f"Enter new {type_cast.__name__} value")
                 try:
                     new_value = type_cast(val)
                     break
                 except ValueError:
                     Colors.print_colored(f"Invalid {type_cast.__name__}.", Colors.RED)
         else:
-            new_value = input_handler.content_input("Enter new value")
+            new_value = input_handler.get_input("Enter new value")
 
         if new_value is not None:
             args[key] = new_value
@@ -301,12 +302,12 @@ def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[M
         tools_path = os.path.join(os.getenv("LLT_DIR", ""), "tools.json")
         with open(tools_path, 'r') as f:
             tools_data = json.load(f)
-            tools = []
+            tools: Iterable[anthropic.types.ToolParam] = []
             tool_names = []
             
             for func_name, func_data in tools_data.get("functions", {}).items():
                 tool_names.append(func_name)
-                tools.append({
+                schema: anthropic.types.ToolParam = {
                     "name": func_name,
                     "description": func_data.get("description", ""),
                     "input_schema": {
@@ -324,7 +325,8 @@ def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[M
                         },
                         "required": ["index"]
                     }
-                })
+                }
+                tools = [schema]
     except Exception as e:
         print(f"{Colors.RED}Error loading tools: {str(e)}{Colors.RESET}")
         return messages
@@ -356,43 +358,31 @@ OUTPUT FORMAT:
 NO explanation or additional text."""
 
     system_prompt = "You are a tool selection specialist. Your only task is to analyze context and select the most appropriate tool command and index. Respond with exactly two values: command and index."
-
+    tool_choice: anthropic.types.ToolChoiceParam = {"type": "auto"}
     try:
         completion = anthropic_client.messages.create(
-            model=args.get('model'),
+            model=args.get('model', "claude-3-sonnet-20241022"),
             system=system_prompt,
             messages=[{"role": "user", "content": optimized_prompt}],
             temperature=0.3,  # Lower temperature for more focused tool selection
             max_tokens=50,    # Minimal tokens needed for command + index
             tools=tools,
-            tool_choice={"type": "auto"}
+            tool_choice=tool_choice # Let the model decide if a tool is needed
         )
 
         for content in completion.content:
             print(f"{Colors.CYAN}Processing content type: {content.type}{Colors.RESET}")
             if content.type == "text":
-                print(f"{Colors.YELLOW}Received text response: {content.text.strip()}{Colors.RESET}")
-            elif content.type == "tool_use":
-                print(f"{Colors.YELLOW}Received tool suggestion: {content.name}{Colors.RESET}")
-                print(f"{Colors.YELLOW}Tool arguments: {content.input}{Colors.RESET}")
-            if content.type == "text":
                 # Parse the response into command and index
                 response = content.text.strip().split()
                 if len(response) == 2 and response[0] in tool_names:
                     command, idx = response
-                    messages.append({
-                        "role": "llt",
-                        "content": f"{command}{idx}"
-                    })
-                    print(f"{Colors.GREEN}Tool selected: {command} {idx}{Colors.RESET}")
+                    messages.append(Message(role="tool", content=f"{command} {idx}"))
+                    print(f"{Colors.GREEN}Tool selected: {command} at {str(index)}{Colors.RESET}")
                 else:
                     print(f"{Colors.RED}Invalid tool selection format{Colors.RESET}")
             elif content.type == "tool_use":
-                tool_message = {
-                    "role": "tool",
-                    "content": f"Tool use: {content.name} with args {content.input}"
-                }
-                messages.append(tool_message)
+                messages.append(Message(role="tool", content=f"Tool use: {content.name} with args {content.input}"))
                 print(f"{Colors.GREEN}Tool use suggested: {content.name}{Colors.RESET}")
 
     except Exception as e:
@@ -416,8 +406,16 @@ def use_tool(messages: List[Message], args: Dict, index: int = -1) -> List[Messa
 
 @llt
 def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    new_value = input_handler.list_input(full_model_choices)
+    new_value = input_handler.get_list_input(full_model_choices)
     if new_value:
         args['model'] = new_value
         Colors.print_colored(f"Changed model to: {new_value}", Colors.GREEN)
+    return messages
+
+@llt
+def change_role(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    new_value = input_handler.get_list_input(["user", "assistant", "system", "tool"])
+    if new_value:
+        args.update({'role': new_value})
+        Colors.print_colored(f"Changed role to: {new_value}", Colors.GREEN)
     return messages

@@ -140,30 +140,22 @@ def screenshot(messages: List[Message], args: Dict, index: int = -1) -> List[Mes
                 # alternative method to doing the same thing we do in file_include
                 args['file'] = output_path
                 args['prompt'] = "I've taken a screenshot of my screen. Please analyze this image and help me understand what's shown. Feel free to ask questions about specific parts you see."
-                messages.append({"role": "llt", "content": "file-1"})
+                messages.append(Message(role="tool", content=output_path))
                 
             else:
                 error_msg = f"Screenshot failed: {process.stderr}"
                 Colors.print_colored(error_msg, Colors.RED)
-                messages.append({
-                    "role": "user",
-                    "content": error_msg
-                })
+                messages.append(Message(role="tool", content=error_msg))
 
         except subprocess.TimeoutExpired:
             error_msg = "Screenshot timed out"
             Colors.print_colored(error_msg, Colors.RED)
-            messages.append({
-                "role": "user",
-                "content": error_msg
-            })
+            messages.append(Message(role="tool", content=error_msg))
+            
 
     except Exception as e:
         error_msg = f"Error capturing screenshot: {str(e)}"
         Colors.print_colored(error_msg, Colors.RED)
-        messages.append({
-            "role": "user",
-            "content": error_msg
-        })
+        messages.append(Message(role="tool", content=error_msg))
 
     return messages 
