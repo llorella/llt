@@ -36,7 +36,7 @@ providers:
   openrouter:
     completion_url: https://openrouter.ai/api/v1/chat/completions
     models:
-      google/gemini: [flash-1.5, pro-1.5, exp-1206:free, exp-1206:pro, 2.0-flash-001, 2.0-flash-lite-preview-02-05:free, 2.0-pro-exp-02-05:free, 2.0-flash-thinking-exp:free, 2.0-flash-exp:free]
+      google/gemini: [flash-1.5, pro-1.5, exp-1206:free, exp-1206:pro, 2.0-flash-001, 2.0-flash-lite-preview-02-05:free, 2.0-pro-exp-02-05:free, 2.0-flash-thinking-exp:free, 2.0-flash-exp:free, 2.5-pro-exp-03-25:free]
       meta-llama/llama-3.1: [405b, 70b-instruct]
       qwen/qwen-2.5: [coder-32b-instruct]
     api_key: OPENROUTER_API_KEY

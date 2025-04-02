@@ -419,3 +419,78 @@ def change_role(messages: List[Message], args: Dict, index: int = -1) -> List[Me
         args.update({'role': new_value})
         Colors.print_colored(f"Changed role to: {new_value}", Colors.GREEN)
     return messages
+
+@llt
+def whisper(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
+    import pyaudio
+    import wave
+    import threading
+    import openai
+    import tempfile
+    import os
+
+    p = pyaudio.PyAudio()
+
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 44100
+    CHUNK = 1024
+
+    # global flag to control recording
+    stop_recording = threading.Event()
+    frames = []
+
+    def record_audio():
+        stream = p.open(
+            format=FORMAT,
+            channels=CHANNELS,
+            rate=RATE,
+            input=True,
+            frames_per_buffer=CHUNK,
+        )
+
+        print("Recording... Press Enter to stop.")
+        while not stop_recording.is_set():
+            data = stream.read(CHUNK)
+            frames.append(data)
+
+        stream.stop_stream()
+        stream.close()
+
+    def save_audio():
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
+            wf = wave.open(temp_audio.name, "wb")
+            wf.setnchannels(CHANNELS)
+            wf.setsampwidth(p.get_sample_size(FORMAT))
+            wf.setframerate(RATE)
+            wf.writeframes(b"".join(frames))
+            wf.close()
+            return temp_audio.name
+
+    def transcribe_audio(audio_file):
+        with open(audio_file, "rb") as file:
+            transcript = openai.audio.transcriptions.create(
+                model="whisper-1",
+                file=file,
+            )
+        return transcript.text
+
+    record_thread = threading.Thread(target=record_audio)
+    record_thread.start()
+
+    input()
+    stop_recording.set()
+    record_thread.join()
+
+    audio_file = save_audio()
+    transcription = transcribe_audio(audio_file)
+
+    os.unlink(audio_file)
+
+    messages.append(Message(role="user", content=transcription))
+
+    print(f"Transcription: {transcription}")
+
+    p.terminate()
+    
+    return messages
