@@ -177,11 +177,11 @@ class ScheduledCommand:
     name: str  # Command name/flag
     index: int  # Position in message list or -1
     args: Optional[dict] = None  # Any additional args needed for command
+    value: Optional[Any] = None  # Store the specific value for this command instance
 
 def schedule_startup_commands(args) -> deque[ScheduledCommand]:
     """Schedule CLI plugin args into a queue of commands to execute in order they were serialized"""
     command_queue: deque[ScheduledCommand] = deque()
-
     cli_command = ["llt"]
     
     # Create mapping of flag variations to plugin names
@@ -193,21 +193,60 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         if short:
             flag_to_plugin[f"--{short}"] = flag
     
-    # Iterate through sys.argv to maintain original order
-    for arg in sys.argv[1:]:  
-        # Add the argument to the CLI command for debugging purposes
+    # Process arguments in pairs to handle value arguments
+    i = 0
+    while i < len(sys.argv[1:]):
+        arg = sys.argv[i+1]  # +1 to skip script name
         cli_command.append(arg)
-        # Skip script name
-        # Strip leading dashes and check if it's a boolean flag
+        
+        # Strip leading dashes and check if it's a flag
         stripped_arg = arg.lstrip('--')
+        
+        # Handle flag with or without value
         if arg in flag_to_plugin:  # Full flag match
             flag = flag_to_plugin[arg]
-            if hasattr(args, flag) and getattr(args, flag):
-                command_queue.append(ScheduledCommand(flag, -1))
+            if hasattr(args, flag):
+                arg_type = None
+                # Find the argument type from the registry
+                for _, info in _plugins_registry.items():
+                    if info['flag'] == flag:
+                        arg_type = info['type']
+                        break
+                
+                # For boolean flags
+                if arg_type in ("bool", "boolean"):
+                    value = getattr(args, flag)
+                    if value:
+                        command_queue.append(ScheduledCommand(flag, -1, value=True))
+                # For value flags (string, int, float)
+                else:
+                    # Check if there's a value in the next argument
+                    next_is_value = False
+                    if i+1 < len(sys.argv[1:]):
+                        next_arg = sys.argv[i+2]
+                        if not next_arg.startswith('--'):
+                            next_is_value = True
+                            i += 1  # Skip the value in the next iteration
+                            command_queue.append(ScheduledCommand(flag, -1, value=next_arg))
+                    if not next_is_value:
+                        # Check for --flag=value format
+                        if '=' in arg:
+                            value = arg.split('=', 1)[1]
+                            command_queue.append(ScheduledCommand(flag, -1, value=value))
+                        else:
+                            # Use the default value from argparse
+                            command_queue.append(ScheduledCommand(flag, -1, value=getattr(args, flag)))
         elif stripped_arg in [info['flag'] for _, info in _plugins_registry.items()]:
             # Direct flag name match (for cases where arg might be after an =)
-            if hasattr(args, stripped_arg) and getattr(args, stripped_arg):
-                command_queue.append(ScheduledCommand(stripped_arg, -1))
+            if hasattr(args, stripped_arg):
+                # Handle --flag=value format
+                if '=' in arg:
+                    value = arg.split('=', 1)[1]
+                    command_queue.append(ScheduledCommand(stripped_arg, -1, value=value))
+                else:
+                    command_queue.append(ScheduledCommand(stripped_arg, -1, value=getattr(args, stripped_arg)))
+        
+        i += 1
     
     llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
     return command_queue

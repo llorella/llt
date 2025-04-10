@@ -180,8 +180,20 @@ def process_command(
             # Create mutable copies for plugin compatibility
             messages, context = state.to_plugin_args()
             
+            # If the command has a specific value, temporarily override the context
+            original_value = None
+            if cmd.value is not None and cmd.name in context:
+                # Save original value
+                original_value = context.get(cmd.name)
+                # Set the specific value for this command execution
+                context[cmd.name] = cmd.value
+            
             # Execute plugin with mutable structures
             new_messages = cmd_map[cmd.name](messages, context, cmd.index)
+            
+            # Restore original value if needed
+            if original_value is not None:
+                context[cmd.name] = original_value
             
             # Handle LLT role messages
             command_queue = state.command_queue.copy()

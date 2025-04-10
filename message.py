@@ -121,7 +121,6 @@ def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     """
     if dict["attach"]:
         ll_path = os.path.join(dict["ll_dir"], dict["attach"])
-        dict["attach"] = None
     else:
         ll_path = path_input(
             "Enter path to attach ll file",
