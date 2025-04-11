@@ -551,15 +551,35 @@ def detect_language_from_content(content: str) -> Optional[str]:
 
 def extract_code_blocks(markdown: str) -> List[Dict]:
     """Extract code blocks from markdown text."""
-    code_pattern = re.compile(r"```(\w+)\n(.*?)\n```", re.DOTALL)
+    code_pattern = re.compile(r"```(\S+)\n(.*?)\n```", re.DOTALL)
     matches = code_pattern.findall(markdown)
     blocks = []
-    for language, code in matches:
-        blocks.append({
-            "language": language,
-            "content": code.strip(),
-            "filename": None
-        })
+    for token, code in matches:
+        # Check if token is a filename (contains a period)
+        if '.' in token:
+            # It's a filename, extract extension and map to language
+            _, ext = os.path.splitext(token)
+            language = None
+            # Find language by extension
+            for lang, extension in language_extension_map.items():
+                if extension == ext:
+                    language = lang
+                    break
+            if not language:
+                # Default to extension without dot as language if not found
+                language = ext[1:] if ext else "text"
+            blocks.append({
+                "language": language,
+                "content": code.strip(),
+                "filename": token
+            })
+        else:
+            # Regular language specifier
+            blocks.append({
+                "language": token,
+                "content": code.strip(),
+                "filename": None
+            })
     return blocks
 
 def fuzzy_find_filename(line: str) -> str:

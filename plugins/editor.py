@@ -52,6 +52,9 @@ def execute_code(code: str, language: str, timeout: int = 30) -> tuple[str, str]
     try:
         if language not in runners:
             raise ValueError(f"Unsupported language: {language}")
+        
+      #  if args.get('non_interactive') and not args.get('auto'):
+            # ask to cd to project dir
 
         with temp_manager.temp_file(suffix=f".{language}", content=code) as temp_path:
             try:
@@ -159,9 +162,11 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     create_backups = args.get('backup', True)
     show_diff = not args.get('no_diff', False)
     force = args.get('force', False)
+    timeout = int(args.get('timeout', 30))
 
     modified = []
     skipped = []
+    executed = []
     
     project_dir = get_project_dir(args)
 
@@ -171,6 +176,21 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     ):
         print(f"\n{block['language']} block:")
         Colors.print_colored(block["content"], Colors.CYAN)
+
+        # Special handling for bash blocks if no filename
+        if block["language"] in ["bash", "shell"] and not block["filename"]:
+            if force or confirm_action("Execute this bash block?"):
+                try:
+                    output, cmd = execute_code(block["content"], block["language"], timeout)
+                    print(f"\nExecuted command: {cmd}")
+                    print("\nOutput:")
+                    Colors.print_colored(output, Colors.GREEN)
+                    executed.append(f"Command: {cmd}")
+                except Exception as e:
+                    error_msg = f"Error executing bash block: {str(e)}"
+                    Colors.print_colored(error_msg, Colors.RED)
+                    skipped.append(f"Bash execution: {block['content'][:20]}...")
+                continue
 
         suggested_ext = language_extension_map.get(block["language"], ".txt")
         default_name = block["filename"] or f"block_{block['index']}{suggested_ext}"
@@ -214,6 +234,9 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     if modified:
         summary.append("Modified/Created:")
         summary.extend(f"  - {f}" for f in modified)
+    if executed:
+        summary.append("Executed:")
+        summary.extend(f"  - {f}" for f in executed)
     if skipped:
         summary.append("Skipped:")
         summary.extend(f"  - {f}" for f in skipped)
