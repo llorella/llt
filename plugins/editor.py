@@ -347,7 +347,7 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         content = file_handler.read(file_path)
         if content is not None:
             if ext.lower() in language_extension_map:
-                content = f"# {os.path.basename(file_path)}\n```{language_extension_map[ext.lower()]}\n{content}\n```"
+                content = f"```{os.path.basename(file_path)}\n{content}\n```"
             messages.append({"role": args.get('role', 'user'), "content": content})
 
     return messages
