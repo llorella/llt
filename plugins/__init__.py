@@ -178,7 +178,6 @@ class ScheduledCommand:
     index: int  # Position in message list or -1
     args: Optional[dict] = None  # Any additional args needed for command
     value: Optional[Any] = None  # Store the specific value for this command instance
-
 def schedule_startup_commands(args) -> deque[ScheduledCommand]:
     """Schedule CLI plugin args into a queue of commands to execute in order they were serialized"""
     command_queue: deque[ScheduledCommand] = deque()
@@ -227,26 +226,47 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
                         if not next_arg.startswith('--'):
                             next_is_value = True
                             i += 1  # Skip the value in the next iteration
+                            cli_command.append(next_arg)  # Add value to cli command
                             command_queue.append(ScheduledCommand(flag, -1, value=next_arg))
                     if not next_is_value:
                         # Check for --flag=value format
                         if '=' in arg:
                             value = arg.split('=', 1)[1]
+                            cli_command[-1] = f"{arg}={value}"  # Update last entry with value
                             command_queue.append(ScheduledCommand(flag, -1, value=value))
                         else:
                             # Use the default value from argparse
-                            command_queue.append(ScheduledCommand(flag, -1, value=getattr(args, flag)))
+                            value = getattr(args, flag)
+                            if value is not None:
+                                cli_command.append(str(value))  # Add default value
+                            command_queue.append(ScheduledCommand(flag, -1, value=value))
         elif stripped_arg in [info['flag'] for _, info in _plugins_registry.items()]:
             # Direct flag name match (for cases where arg might be after an =)
             if hasattr(args, stripped_arg):
                 # Handle --flag=value format
                 if '=' in arg:
                     value = arg.split('=', 1)[1]
+                    cli_command[-1] = f"{arg}={value}"  # Update last entry with value
                     command_queue.append(ScheduledCommand(stripped_arg, -1, value=value))
                 else:
-                    command_queue.append(ScheduledCommand(stripped_arg, -1, value=getattr(args, stripped_arg)))
+                    value = getattr(args, stripped_arg)
+                    if value is not None:
+                        cli_command.append(str(value))  # Add value
+                    command_queue.append(ScheduledCommand(stripped_arg, -1, value=value))
         
         i += 1
     
     llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
+    # Log command history with metadata to ~/.llt/cli_command.json
+    import json
+    from datetime import datetime
+    
+    command_log = {
+        "timestamp": datetime.now().isoformat(),
+        "command": " ".join(cli_command)
+    }
+    
+    with open(os.path.expanduser("~/.llt/cli_command.json"), "a") as f:
+        json.dump(command_log, f)
+        f.write("\n")
     return command_queue
