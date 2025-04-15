@@ -175,7 +175,7 @@ def process_command(
     """
     if cmd.name in cmd_map:
         if not state.context.get('non_interactive'):
-            print(f"\nExecuting command: {cmd.name}")
+            print(f"\nllt> {cmd.name}")
         try:
             # Create mutable copies for plugin compatibility
             messages, context = state.to_plugin_args()
@@ -235,9 +235,7 @@ def get_next_command(
     elif state.context.get('non_interactive'):
         return None
     else:
-        print("\nWaiting for command input...")
         cmd_name, index = llt_input(list(cmd_map.keys()))
-        print(f"Received command: {cmd_name} (index: {index})")
         return ScheduledCommand(cmd_name, index)
 
 def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:

@@ -21,7 +21,7 @@ def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     flag: load
     short: ll
     """
-    if not dict["non_interactive"]:
+    if not dict["non_interactive"] and not dict["auto"]:
         ll_path = path_input(
             "Enter path to ll file",
             default=dict["load"],
@@ -56,7 +56,7 @@ def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]
         # if write is "." then write to the same file as load
         dict["write"] = dict["load"]
         
-    if not dict["non_interactive"] or not dict["write"]:
+    if not dict["non_interactive"] and not dict["auto"] or not dict["write"]:
         ww_path = path_input(
             "Enter path to write ll file",
             default=dict["write"] if dict["write"] else dict["load"],

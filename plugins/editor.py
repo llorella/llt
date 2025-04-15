@@ -6,6 +6,7 @@ import json
 from typing import List, Dict, Optional, Callable, Iterator
 from pathlib import Path
 import traceback
+import re
 
 from message import Message
 from plugins import llt
@@ -120,31 +121,36 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
 
     timeout = int(args.get('timeout', 30))
 
-    results = []
-    blocks = iter_blocks(
-        messages[index],
-        predicate=lambda b: not target_lang or b["language"] == target_lang
-    )
-
-    for block in blocks:
-        print(f"\nCode block {block['index'] + 1} ({block['language']}):")
-        Colors.print_colored(block["content"], Colors.CYAN)
+    # Get all blocks with their positions in the text
+    content = messages[index]["content"]
+    
+    # Regular expression to find code blocks - captures the entire block including ```
+    pattern = r"```(\S+)\n(.*?)\n```"
+    code_blocks = list(re.finditer(pattern, content, re.DOTALL))
+    
+    # Process blocks in reverse to avoid messing up positions
+    for match in reversed(code_blocks):
+        block_start, block_end = match.span()
+        language = match.group(1)
+        code = match.group(2).strip()
+        
+        # Skip blocks that don't match target language
+        if target_lang and language != target_lang:
+            continue
+            
+        print(f"\nCode block ({language}):")
+        Colors.print_colored(code, Colors.CYAN)
 
         if args.get('auto') or (args.get('non_interactive') or confirm_action("Execute this block?")):
             try:
-                output, cmd = execute_code(block["content"], block["language"], timeout)
-                if cmd:
-                    results.append(f"<command>\n{cmd}\n</command>")
-                if output:
-                    formatted_output = f"<output>\n{output}\n</output>"
-                    results.append(formatted_output)
+                output, cmd = execute_code(code, language, timeout)
+                # Replace the block with its output
+                content = content[:block_start] + output + content[block_end:]
             except Exception as e:
-                error_msg = f"Error in block {block['index'] + 1}:\n```text\n{str(e)}\n```"
-                results.append(error_msg)
-
-    if results:
-        messages[index]["content"] = "\n\n".join(results)
-
+                error_msg = f"Error executing block: {str(e)}"
+                Colors.print_colored(error_msg, Colors.RED)
+    
+    messages[index]["content"] = content
     return messages
 
 
@@ -167,8 +173,10 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     modified = []
     skipped = []
     executed = []
+    edited = []
     
     project_dir = get_project_dir(args)
+    editor = os.environ.get("EDITOR", "vim")
 
     for block in iter_blocks(
         messages[msg_index],
@@ -237,6 +245,9 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     if executed:
         summary.append("Executed:")
         summary.extend(f"  - {f}" for f in executed)
+    if edited:
+        summary.append("Edited:")
+        summary.extend(f"  - {f}" for f in edited)
     if skipped:
         summary.append("Skipped:")
         summary.extend(f"  - {f}" for f in skipped)
@@ -339,7 +350,7 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     flag: file
     short: f
     """
-    if not args.get('file') or not args.get('non_interactive'):
+    if not args.get('file') and not args.get('non_interactive') and not args.get('auto'):
         file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), base_dir=os.getcwd())
     else:
         file_path = args.get('file', None)

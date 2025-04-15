@@ -17,7 +17,7 @@ def load_xml_tags() -> List[str]:
 def save_xml_tags(tags: List[str]) -> None:
     """Save XML tags to file."""
     try:
-        with open('plugins/xml_tags.json', 'w') as f:
+        with open(os.path.join(os.environ.get("LLT_DIR", "~/llt"), 'plugins/xml_tags.json'), 'w') as f:
             json.dump({'tags': list(set(tags))}, f, indent=2)
     except Exception as e:
         llt_logger.log_error(f"Error saving XML tags: {e}")
