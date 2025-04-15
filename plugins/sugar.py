@@ -2,7 +2,7 @@ from typing import List, Dict
 import os
 import json
 from plugins import llt
-from utils import get_valid_index, content_input, list_input, language_extension_map
+from utils import get_valid_index, content_input, list_input, language_extension_map, input_handler
 from logger import llt_logger
 
 def load_xml_tags() -> List[str]:
@@ -53,26 +53,42 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
 
     return messages
 
-def parse_xml_content(content: str) -> str:
+def parse_xml_content(content: str, tag_name: str) -> str:
     """
-    Parse XML content from a message.
-
-    This function attempts to interpret the provided string as XML and extracts all textual content
-    found within its elements. If the input is not valid XML, the original content is returned unchanged.
+    Finds the inner content of a tag in content and returns it as a string 
     """
-    import xml.etree.ElementTree as ET
-    try:
-        root = ET.fromstring(content.strip())
-        return ''.join(root.itertext()).strip()
-    except ET.ParseError:
-        return content
+    import re
+    pattern = f"<{tag_name}>(.*?)</{tag_name}>"
+    # Use re.DOTALL to make . match newlines as well
+    matches = re.findall(pattern, content, re.DOTALL)
+    
+    if not matches:
+        return ""
+    
+    # If multiple matches found, join them with newlines
+    if len(matches) > 1:
+        return "\n\n".join(match.strip() for match in matches)
+    
+    # Return the single match
+    return matches[0].strip()
 
 @llt
 def parse_xml(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
-    """Parse XML content from message."""
-    if not args.get('non_interactive'):
+    """
+    Description: Parse XML content from a message.
+    Type: string
+    Default: None
+    flag: parse_xml
+    short: parse
+    """
+    tag_name = args.get('parse_xml')
+    if not args.get('non_interactive') and not args.get('auto') or not tag_name:
         index = get_valid_index(messages, "parse XML content of", index)
-    messages[index]["content"] = parse_xml_content(messages[index]["content"])
+        tag_name = input_handler.get_list_input(load_xml_tags(), "Select tag name to parse") or tag_name
+    
+    if tag_name:
+        original_content = messages[index]["content"]
+        messages[index]["content"] = parse_xml_content(original_content, tag_name)
     return messages
 
 @llt

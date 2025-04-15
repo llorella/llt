@@ -149,9 +149,10 @@ def detach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     flag: detach
     short:
     """
-    if not dict.get('non_interactive'):
+    if not dict.get('non_interactive') and not dict.get('auto'):
         index = get_valid_index(messages, "detach", index)
-    messages[index]["role"] = "detached"
+    selected_message = messages[index]
+    messages = [selected_message]
     if not dict["non_interactive"]:
         Colors.print_colored(f"Detached message at index {index + 1}.", Colors.GREEN)
     return messages
