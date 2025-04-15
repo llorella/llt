@@ -414,10 +414,24 @@ def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[M
 
 @llt
 def change_role(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    new_value = input_handler.get_list_input(["user", "assistant", "system", "tool"])
+    """
+    Description: Change the role of the message at index
+    Type: string
+    Default: user
+    flag: change_role
+    """
+    if not args.get('non_interactive') and not args.get('auto'):
+        new_value = input_handler.get_list_input(["user", "assistant", "system", "tool"])
+    elif args.get('change_role'):
+        new_value = args['change_role']
+    else:
+        # new value is one of available roles except current role
+        new_value = next(iter(set(["user", "assistant", "system", "tool"]) - {messages[index]["role"]}))
+    
     if new_value:
-        args.update({'role': new_value})
-        Colors.print_colored(f"Changed role to: {new_value}", Colors.GREEN)
+        messages[index]["role"] = new_value
+        Colors.print_colored(f"Changed role of message at index {index} to: {new_value}", Colors.GREEN)
+    
     return messages
 
 @llt
