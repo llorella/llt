@@ -763,16 +763,35 @@ def get_project_dir(args: Dict[str, Any]) -> str:
 
     # Use input_handler to get the project directory path if interactive
     if not args.get('non_interactive'):
-        project_dir = input_handler.get_path_input(
+        # Get raw input first to check for "."
+        user_input = input_handler.get_input(
             "Enter project directory",
-            default=project_dir,
-            root_dir=exec_dir
+            default=project_dir, # Still provide the calculated default
+            path_mode=True, # Keep path completion
+            root_dir=exec_dir # Keep completion relative to exec_dir
         )
-        Colors.print_colored(f"Interactive project_dir input: {project_dir}", Colors.BLUE)
+        Colors.print_colored(f"Raw interactive input: {user_input}", Colors.BLUE)
+
+        if user_input == ".":
+            project_dir = os.getcwd()
+            Colors.print_colored(f"Input is '.', setting project_dir to cwd: {project_dir}", Colors.BLUE)
+        elif user_input: # Check if user provided non-empty input other than "."
+             # Use the input value, potentially resolving relative to exec_dir
+             resolved_path = os.path.expanduser(user_input)
+             if exec_dir and not os.path.isabs(resolved_path):
+                  project_dir = os.path.join(exec_dir, resolved_path)
+             else:
+                  project_dir = resolved_path
+             Colors.print_colored(f"Resolved interactive project_dir input: {project_dir}", Colors.BLUE)
+        # If user_input was empty, project_dir remains the default calculated earlier
+        else:
+             Colors.print_colored(f"Empty input, using default project_dir: {project_dir}", Colors.BLUE)
+
     else:
         Colors.print_colored(f"Non-interactive mode, using project_dir: {project_dir}", Colors.BLUE)
 
-    return project_dir
+    # Ensure the final path is absolute and normalized
+    return os.path.abspath(project_dir)
 
 def process_file_changes(
     files: List[Dict[str, str]], 
