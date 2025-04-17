@@ -5,8 +5,7 @@ import json
 from typing import Optional, Dict, List, Any
 
 from plugins import llt
-from utils import get_path_input, get_valid_index, get_input, Colors
-
+from utils import input_handler, get_valid_index, Colors
 class Message(Dict):
     role: str
     content: Any
@@ -22,7 +21,7 @@ def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     short: ll
     """
     if not dict["non_interactive"] and not dict["auto"]:
-        ll_path = get_path_input(
+        ll_path = input_handler.get_path_input(
             "Enter path to ll file",
             default=dict["load"],
             root_dir=dict["ll_dir"]
@@ -57,7 +56,7 @@ def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]
         dict["write"] = dict["load"]
         
     if not dict["non_interactive"] and not dict["auto"] or not dict["write"]:
-        ww_path = get_path_input(
+        ww_path = input_handler.get_path_input(
             "Enter path to write ll file",
             default=dict["write"] if dict["write"] else dict["load"],
             root_dir=dict["ll_dir"]
@@ -114,7 +113,7 @@ def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
 @llt
 def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
-    Description: Attach a set of messages from file
+    Description: Attach a set of messages from file at specified index
     Type: string
     Default: None
     flag: attach
@@ -123,7 +122,7 @@ def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     if dict["attach"]:
         ll_path = os.path.join(dict["ll_dir"], dict["attach"])
     else:
-        ll_path = get_path_input(
+        ll_path = input_handler.get_path_input(
             "Enter path to attach ll file",
             default=None,
             root_dir=dict["ll_dir"]
@@ -135,9 +134,23 @@ def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     with open(ll_path, 'r') as file:
         new_messages = json.load(file)
 
-    messages.extend(new_messages)
+    # Handle negative indices
+    if index < 0:
+        index = len(messages) + index + 1
+    
+    # Ensure index is within bounds
+    index = max(0, min(index, len(messages)))
+
+    # Split messages at index and insert new messages
+    messages_before = messages[:index]
+    messages_after = messages[index:]
+    messages = messages_before + new_messages + messages_after
+
     if not dict["non_interactive"]:
-        Colors.print_colored(f"Attached {len(new_messages)} messages to the current conversation.", Colors.GREEN)
+        Colors.print_colored(
+            f"Attached {len(new_messages)} messages at index {index}.", 
+            Colors.GREEN
+        )
     return messages
 
 
@@ -219,7 +232,7 @@ def change_role(messages: List[Message], dict: Dict, index: int = -1) -> List[Me
     """
     if not dict.get('non_interactive'):
         index = get_valid_index(messages, "modify role of", index)
-        new_role = get_input("Select new role for the message", ["user", "assistant", "system", "tool"])
+        new_role = input_handler.get_input("Select new role for the message", ["user", "assistant", "system", "tool"])
     else:
         new_role = dict.get('role', 'user')
     messages[index]["role"] = new_role

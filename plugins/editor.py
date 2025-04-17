@@ -3,7 +3,7 @@ import os
 import subprocess
 import pyperclip  # type: ignore
 import json
-from typing import List, Dict, Optional, Callable, Iterator
+from typing import List, Dict
 from pathlib import Path
 import traceback
 import re

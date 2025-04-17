@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import List, Dict
 from typing import Optional, Union
 import traceback
-from utils import Colors, get_input, get_valid_index
+from utils import Colors, input_handler, get_valid_index
 from logger import llt_logger
 
 from google.auth.transport.requests import Request
@@ -126,8 +126,8 @@ def send_email(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
             to_email = args.get('to') or config.get('default_to')
             subject = args.get('subject') or config.get('default_subject', 'Message from LLT')
         else:
-            to_email = get_input("To email address", default=config.get('default_to', ''))
-            subject = get_input("Subject", default=config.get('default_subject', 'Message from LLT'))
+            to_email = input_handler.get_input("To email address", default=config.get('default_to', ''))
+            subject = input_handler.get_input("Subject", default=config.get('default_subject', 'Message from LLT'))
         
         if not to_email:
             error_msg = "No recipient email address provided"

@@ -20,7 +20,7 @@ from functools import reduce
 from collections import deque
 
 from logger import llt_logger
-from utils import Colors, llt_input, parse_cmd_string, confirm_action
+from utils import Colors, llt_interactive_input, parse_cmd_string
 from plugins import (
     load_plugins,
     add_plugin_arguments,
@@ -229,14 +229,17 @@ def get_next_command(
 ) -> Optional[ScheduledCommand]:
     """
     Determine the next command to execute.
+    Handles command queue, non-interactive mode, and transitions
+    from redirected stdin to interactive TTY input.
     """
     if state.command_queue:
         return state.command_queue.popleft()
     elif state.context.get('non_interactive'):
         return None
-    else:
-        cmd_name, index = llt_input(list(cmd_map.keys()))
-        return ScheduledCommand(cmd_name, index)
+    
+    cmd_name, value, index = llt_interactive_input(list(cmd_map.keys()))
+    internal_index = index if index is not None else -1
+    return ScheduledCommand(cmd_name, internal_index, value=value)
 
 def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
     """
@@ -252,7 +255,7 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
             if not state.context.get('non_interactive'):
                 print("\nDouble interrupt - exiting...")
             sys.exit(0)
-            
+
         if state.context.get('auto'):
             new_context = dict(state.context)
             new_context['auto'] = False
@@ -268,9 +271,10 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
             if cmd is None:
                 if not state.context.get('non_interactive'):
                     print("Non-interactive mode complete, exiting...")
+                # Otherwise (e.g. stdin redirection ended), exit silently
                 return None
             return process_command(cmd_map, cmd, state)
-            
+
         except KeyboardInterrupt:
             return process_interrupt(state)
         except Exception as e:

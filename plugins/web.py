@@ -3,8 +3,9 @@
 import sys
 from collections import namedtuple
 import requests
-from bs4 import BeautifulSoup, Tag, NavigableString
-from typing import List, Dict, Optional, Union, Tuple, Callable
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
+from typing import List, Dict, Optional, Union, Tuple, Any
 from urllib.parse import urlparse
 import json
 
@@ -34,12 +35,12 @@ def parse_html(html_content: str) -> Optional[BeautifulSoup]:
 
 
 def extract_metadata(soup: BeautifulSoup, url: str) -> Dict:
+    description_tag = soup.find('meta', {'name': 'description'})
+    description_content = description_tag.get('content') if isinstance(description_tag, Tag) else None
+    
     return {
         'title': soup.title.string if soup.title else None,
-        'description': (
-            soup.find('meta', {'name': 'description'})['content']
-            if soup.find('meta', {'name': 'description'}) else None
-        ),
+        'description': description_content,
         'url': url
     }
 
@@ -53,7 +54,7 @@ def determine_block_type(element: Tag) -> str:
         return 'link'
     return 'text'
 
-
+ 
 def extract_code_content(element: Tag) -> str:
     code_element = element.find('code') or element
     return code_element.get_text(strip=False).strip()
@@ -64,9 +65,9 @@ def extract_text_content(element: Tag) -> str:
     for child in element.children:
         if isinstance(child, NavigableString):
             content_parts.append(str(child).strip())
-        elif child.name in ['a', 'strong', 'em', 'code']:
+        elif isinstance(child, Tag) and child.name in ['a', 'strong', 'em', 'code']:
             content_parts.append(child.get_text().strip())
-        elif child.name in ['br', 'p']:
+        elif isinstance(child, Tag) and child.name in ['br', 'p']:
             content_parts.append('\n')
     return ' '.join(part for part in content_parts if part).replace('\n ', '\n')
 
@@ -99,9 +100,12 @@ def extract_block_content(element: Tag) -> str:
 
 def find_content_blocks(soup: BeautifulSoup, tags: List[str]) -> List[ContentBlock]:
     blocks = []
-    for tag in tags:
-        elements = soup.find_all(tag)
+    for tag_selector in tags:
+        elements = soup.select(tag_selector)
         for element in elements:
+            if not isinstance(element, Tag):
+                continue
+                
             block_type = determine_block_type(element)
             content = extract_block_content(element)
             if content:
@@ -179,7 +183,7 @@ def get_tags_for_type(content_type: str) -> List[str]:
 
 
 @llt
-def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> List[Dict[str, any]]:
+def url_fetch(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> List[Dict[str, Any]]:
     """
     Description: Fetch and process URL content
     Type: bool
@@ -193,11 +197,17 @@ def url_fetch(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> Li
     url = messages[index]["content"]
 
     if args.get('tags'):
-        if isinstance(args.get('tags'), str):
-            tags = get_tags_for_type(args.get('tags'))
+        tags_arg = args.get('tags')
+        if isinstance(tags_arg, str):
+            tags = get_tags_for_type(tags_arg)
+        elif isinstance(tags_arg, list):
+            tags = tags_arg
         else:
-            tags = args.get('tags')
+            tags = DEFAULT_TAGS['content']
     else:
+        tags = DEFAULT_TAGS['content']
+    
+    if not isinstance(tags, list):
         tags = DEFAULT_TAGS['content']
 
     result = process_url(

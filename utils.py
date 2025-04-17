@@ -23,6 +23,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from contextlib import contextmanager
 import time
+import shlex  # Import shlex for robust splitting
 
 # Type aliases
 T = TypeVar('T')
@@ -198,7 +199,8 @@ class InputHandler:
             path_mode=True,
             root_dir=root_dir
         ).strip()  # Strip any trailing whitespace
-        
+    
+            
         # Handle path resolution
         if root_dir and not os.path.isabs(os.path.expanduser(result)):
             return os.path.join(root_dir, result)
@@ -376,11 +378,7 @@ file_handler = FileHandler()
 diff_handler = DiffHandler()
 # temp_manager = TempFileManager() # Moved instantiation after class definition
 
-# Utility functions that use the handlers
-def get_input(prompt: str, options: Optional[List[str]] = None, 
-              default: Any = None, **kwargs) -> Any:
-    """Get input with autocomplete support."""
-    return input_handler.get_input(prompt, options, default, **kwargs)
+
 
 def get_path_input(prompt: str, default: Optional[str] = None, 
                   root_dir: Optional[str] = None) -> str:
@@ -413,7 +411,11 @@ def get_valid_index(messages: Sequence[Dict], prompt: str, default: int = -1) ->
     )
 
 def parse_cmd_string(raw_cmd: Union[str, Dict[str, Any]]) -> Tuple[str, int]:
-    """Parse command string into command and index."""
+    """Parse command string (potentially from LLM) into command and index.
+    Handles formats like "123cmd", "cmd123", "1-cmd", "cmd-1".
+    Also handles dictionary input with text content.
+    Returns command name and index (-1 if not found or invalid).
+    """
     # Handle dictionary input
     if isinstance(raw_cmd, dict):
         # Extract text content from the dictionary
@@ -435,17 +437,114 @@ def parse_cmd_string(raw_cmd: Union[str, Dict[str, Any]]) -> Tuple[str, int]:
         return "", -1
 
     patterns = [
-        (r"^(\d+)([a-z]+)$", lambda m: (m.group(2), int(m.group(1)))),           # "123cmd"
-        (r"^([a-z]+)(\d+)$", lambda m: (m.group(1), int(m.group(2)))),           # "cmd123"
-        (r"^(\d+)-([a-z]+)$", lambda m: (m.group(2), -int(m.group(1)))),         # "1-cmd"
-        (r"^([a-z]+)-(\d+)$", lambda m: (m.group(1), -int(m.group(2))))          # "cmd-1"
+        (r"^(\d+)([a-zA-Z_][a-zA-Z0-9_]*)$", lambda m: (m.group(2), int(m.group(1)))),  # "123cmd"
+        (r"^([a-zA-Z_][a-zA-Z0-9_]*)(\d+)$", lambda m: (m.group(1), int(m.group(2)))),  # "cmd123"
+        (r"^(\d+)-([a-zA-Z_][a-zA-Z0-9_]*)$", lambda m: (m.group(2), -int(m.group(1)))), # "1-cmd"
+        (r"^([a-zA-Z_][a-zA-Z0-9_]*)-(\d+)$", lambda m: (m.group(1), -int(m.group(2)))) # "cmd-1"
     ]
 
     for pattern, handler in patterns:
-        if match := re.match(pattern, raw_cmd):
-            return handler(match)
+        match = re.match(pattern, raw_cmd)
+        if match:
+            cmd_name, index = handler(match)
+            # Ensure index is adjusted to be 0-based if positive
+            return cmd_name, index - 1 if index > 0 else index
 
-    return raw_cmd, -1
+    # If no pattern matches, assume it's just a command name with no index
+    # Check if the command itself is a number (e.g., user typed just "1")
+    try:
+        index = int(raw_cmd)
+        return "", index - 1 # Treat bare number as index for default action (e.g. view)
+    except ValueError:
+        # It's just a command name
+         # Basic split for command name in case of spaces (take first word)
+        command_name = raw_cmd.split()[0]
+        return command_name, -1
+
+def parse_interactive_input(input_str: str) -> Tuple[str, Optional[str], Optional[int]]:
+    """Parse interactive input into command, value, and (0-based) index.
+
+    Handles simple quoted arguments using shlex.
+    Prioritizes checking the last part for an integer index.
+    Examples:
+    'load my_file.ll'       -> ('load', 'my_file.ll', None)
+    'prompt "hello world"'    -> ('prompt', 'hello world', None)
+    'remove 3'              -> ('remove', None, 2)  # Positive index becomes 0-based
+    'attach temp.ll -1'     -> ('attach', 'temp.ll', -1) # Negative index preserved
+    'load temp -1'          -> ('load', 'temp', -1)
+    'my_command val1 val2 5'  -> ('my_command', 'val1 val2', 4)
+    'help'                  -> ('help', None, None)
+    ''                      -> ('', None, None)
+    """
+    if not input_str:
+        return "", None, None
+
+    try:
+        parts = shlex.split(input_str)
+    except ValueError:
+        # Basic fallback for unmatched quotes
+        parts = input_str.split()
+
+    if not parts:
+         return "", None, None
+
+    cmd = parts[0]
+    value = None
+    index = None # Internal index (0-based for positive, kept as-is for negative)
+
+    # Check if the last part is an integer index
+    if len(parts) >= 2:
+        try:
+            potential_index = int(parts[-1])
+            # If successful, treat the last part as the index
+            index = potential_index - 1 if potential_index > 0 else potential_index
+            # The value is everything between the command and the index
+            if len(parts) > 2:
+                value = " ".join(parts[1:-1])
+            # else: value remains None (e.g., 'remove 3')
+            return cmd, value, index
+        except ValueError:
+            # Last part is not an integer, treat all parts after cmd as value
+            value = " ".join(parts[1:])
+    # else: Only command was provided, value and index remain None
+
+    return cmd, value, index # Index will be None here
+
+def llt_interactive_input(command_list: List[str]) -> Tuple[str, Optional[str], Optional[int]]:
+    """Prompt user for command, handle tab completion, parse using parse_interactive_input.
+
+    Returns command name, optional value string, and optional 0-based index.
+    """
+    completer = None
+    try:
+        import readline
+        
+        def _completer(text, state):
+            options = [cmd for cmd in command_list if cmd.startswith(text)]
+            return options[state] if state < len(options) else None
+        
+        completer = _completer # Assign the inner function
+        readline.set_completer(completer)
+        # Use common delimiters including space
+        readline.set_completer_delims(' \t\n`~!@#$%^&*()-=+[{]}\\|;\'",<>/?')
+        readline.parse_and_bind('tab: complete')
+    except ImportError:
+        pass # Readline not available
+
+    try:
+        input_str = input("\nllt> ").strip()
+    finally:
+        # Reset completer if readline was used
+        try:
+            import readline
+            if completer is not None:
+                readline.set_completer(None)
+        except ImportError:
+            pass
+
+    cmd, value, index = parse_interactive_input(input_str)
+
+    return cmd, value, index
 
 # Context managers
 @contextmanager
@@ -636,24 +735,31 @@ def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
         })
 
     return blocks
-
 # File operations utilities
 def get_project_dir(args: Dict[str, Any]) -> str:
     """Determine project directory based on command arguments."""
     # Ensure LLT_PATH is handled if None
     llt_path = os.getenv('LLT_PATH', '.')
+    Colors.print_colored(f"LLT_PATH: {llt_path}", Colors.BLUE)
     
     ll_dir_abs = os.path.abspath(args.get("ll_dir", os.path.join(llt_path, 'll')))
+    Colors.print_colored(f"ll_dir_abs: {ll_dir_abs}", Colors.BLUE)
+    
     exec_dir = args.get('exec_dir', os.path.join(llt_path, 'exec'))
+    Colors.print_colored(f"exec_dir: {exec_dir}", Colors.BLUE)
 
     # Use current working directory if 'load' is not specified
     load_path = args.get("load")
+    Colors.print_colored(f"load_path: {load_path}", Colors.BLUE)
+    
     if load_path and not load_path.endswith('.ll'):
         # When load is specified, project dir should be under exec_dir with same name
         project_dir = os.path.join(exec_dir, load_path)
+        Colors.print_colored(f"Setting project_dir from load_path: {project_dir}", Colors.BLUE)
     else:
         # If no 'load' specified, default to execution directory
         project_dir = os.getcwd()
+        Colors.print_colored(f"Setting project_dir to cwd: {project_dir}", Colors.BLUE)
 
     # Use input_handler to get the project directory path if interactive
     if not args.get('non_interactive'):
@@ -662,6 +768,9 @@ def get_project_dir(args: Dict[str, Any]) -> str:
             default=project_dir,
             root_dir=exec_dir
         )
+        Colors.print_colored(f"Interactive project_dir input: {project_dir}", Colors.BLUE)
+    else:
+        Colors.print_colored(f"Non-interactive mode, using project_dir: {project_dir}", Colors.BLUE)
 
     return project_dir
 

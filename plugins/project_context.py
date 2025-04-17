@@ -6,12 +6,10 @@ Combines file inclusion, code block application/execution, and Git functionaliti
 """
 
 import os
-import sys
 import fnmatch
 import subprocess
-import re
-import json
-from typing import List, Dict, Optional, Callable, Iterator, Set, Tuple, Any
+
+from typing import List, Dict, Optional, Set, Tuple
 from pathlib import Path
 import traceback
 import pathspec
@@ -21,7 +19,7 @@ from plugins import llt
 from message import Message
 from utils import (
     Colors,
-    get_project_dir, temp_file, iter_blocks,
+    get_project_dir, temp_file,
 )
 
 # --- Constants ---
@@ -269,16 +267,13 @@ def execute_code(code: str, language: str, timeout: int = 30, project_dir: Optio
 def include_project_context(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
     Description: Include content of project files based on filters.
-    Type: bool
-    Default: false
+    Type: boolean
+    Default: False
     flag: include_project_context
     short: ipc
     """
     project_dir = get_project_dir(args)
-    print(f"Project directory: {project_dir}")
-    directory = args.get('directory', project_dir)
-    abs_dir = os.path.abspath(directory)
-    print(f"Absolute directory: {abs_dir}")
+    abs_dir = os.path.abspath(project_dir)
 
     # Combine default ignores with user-provided ones
     ignored_patterns = set(DEFAULT_IGNORED_PATTERNS)
