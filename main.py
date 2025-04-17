@@ -20,7 +20,7 @@ from functools import reduce
 from collections import deque
 
 from logger import llt_logger
-from utils import Colors, llt_interactive_input, parse_cmd_string
+from utils import Colors, llt_interactive_input, parse_interactive_input
 from plugins import (
     load_plugins,
     add_plugin_arguments,
@@ -198,14 +198,15 @@ def process_command(
             # Handle LLT role messages
             command_queue = state.command_queue.copy()
             if new_messages and isinstance(new_messages[-1], dict) and new_messages[-1].get("role") == "tool":
+                tool_content = new_messages[-1].get("content", "")
                 if not state.context.get("non_interactive"):
                     if input("Add this LLT command to queue? (y/N): ").lower() == 'y':
-                        cmd_name, index = parse_cmd_string(new_messages[-1].get("content", ""))
-                        command_queue.append(ScheduledCommand(cmd_name, index))
+                        cmd_name, value, index = parse_interactive_input(tool_content)
+                        command_queue.append(ScheduledCommand(cmd_name, index if index is not None else -1, value=value))
                         new_messages = new_messages[:-1]
                 else:
-                    cmd_name, index = parse_cmd_string(new_messages[-1].get("content", ""))
-                    command_queue.append(ScheduledCommand(cmd_name, index))
+                    cmd_name, value, index = parse_interactive_input(tool_content)
+                    command_queue.append(ScheduledCommand(cmd_name, index if index is not None else -1, value=value))
                     new_messages = new_messages[:-1]
             
             # Create new state with updates from plugin

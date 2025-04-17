@@ -2,28 +2,20 @@
 # Combined utilities from utils/
 
 import os
-import json
 import shutil
 from datetime import datetime
-import sys
-import re
 import difflib
 import readline
 import base64
-import tiktoken
-import pyperclip  # type: ignore
-from PIL import Image
-from math import ceil
-import tempfile
-from io import BytesIO
-import pprint
-from typing import List, Dict, Tuple, Optional, Iterator, Any, Callable, TypeVar, Union, Generator, Sequence
-from enum import Enum
+from typing import List, Dict, Tuple, Optional, Any, Callable, TypeVar, Union, Sequence, Generator, Iterator
 from dataclasses import dataclass
-from pathlib import Path
+import shlex
 from contextlib import contextmanager
-import time
-import shlex  # Import shlex for robust splitting
+import tempfile
+import tiktoken
+import pyperclip
+from pathlib import Path
+import re
 
 # Type aliases
 T = TypeVar('T')
@@ -174,19 +166,6 @@ class InputHandler:
 
         finally:
             readline.set_completer(None)
-
-    def get_command_input(self, commands: List[str], prompt: str = "llt") -> Tuple[str, int]:
-        """Get command input with command autocompletion."""
-        try:
-            result = self.get_input(
-                prompt,
-                options=commands,
-                path_mode=False
-            )
-            return parse_cmd_string(result)
-        except (EOFError, KeyboardInterrupt):
-            print("\nExiting...")
-            sys.exit(0)
 
     def get_path_input(self, 
                       prompt: str,
@@ -376,17 +355,7 @@ class DiffHandler:
 input_handler = InputHandler()
 file_handler = FileHandler()
 diff_handler = DiffHandler()
-# temp_manager = TempFileManager() # Moved instantiation after class definition
 
-
-
-def get_path_input(prompt: str, default: Optional[str] = None, 
-                  root_dir: Optional[str] = None) -> str:
-    """Get path input with filesystem autocomplete."""
-    path = input_handler.get_input(prompt, default=default, path_mode=True)
-    if root_dir and not os.path.isabs(os.path.expanduser(path)):
-        return os.path.join(root_dir, path)
-    return os.path.expanduser(path)
 
 def get_valid_index(messages: Sequence[Dict], prompt: str, default: int = -1) -> int:
     """Get a valid index from the user for a list of messages."""
@@ -409,57 +378,6 @@ def get_valid_index(messages: Sequence[Dict], prompt: str, default: int = -1) ->
         validator=validate,
         transform=transform
     )
-
-def parse_cmd_string(raw_cmd: Union[str, Dict[str, Any]]) -> Tuple[str, int]:
-    """Parse command string (potentially from LLM) into command and index.
-    Handles formats like "123cmd", "cmd123", "1-cmd", "cmd-1".
-    Also handles dictionary input with text content.
-    Returns command name and index (-1 if not found or invalid).
-    """
-    # Handle dictionary input
-    if isinstance(raw_cmd, dict):
-        # Extract text content from the dictionary
-        if isinstance(raw_cmd.get("content"), str):
-            raw_cmd = raw_cmd["content"]
-        else:
-            # Handle potential list of content parts
-            text_parts = [
-                part["text"] for part in raw_cmd.get("content", [])
-                if isinstance(part, dict) and part.get("type") == "text"
-            ]
-            raw_cmd = "".join(text_parts)
-    
-    if not isinstance(raw_cmd, str):
-        return "", -1
-        
-    raw_cmd = raw_cmd.strip()
-    if not raw_cmd:
-        return "", -1
-
-    patterns = [
-        (r"^(\d+)([a-zA-Z_][a-zA-Z0-9_]*)$", lambda m: (m.group(2), int(m.group(1)))),  # "123cmd"
-        (r"^([a-zA-Z_][a-zA-Z0-9_]*)(\d+)$", lambda m: (m.group(1), int(m.group(2)))),  # "cmd123"
-        (r"^(\d+)-([a-zA-Z_][a-zA-Z0-9_]*)$", lambda m: (m.group(2), -int(m.group(1)))), # "1-cmd"
-        (r"^([a-zA-Z_][a-zA-Z0-9_]*)-(\d+)$", lambda m: (m.group(1), -int(m.group(2)))) # "cmd-1"
-    ]
-
-    for pattern, handler in patterns:
-        match = re.match(pattern, raw_cmd)
-        if match:
-            cmd_name, index = handler(match)
-            # Ensure index is adjusted to be 0-based if positive
-            return cmd_name, index - 1 if index > 0 else index
-
-    # If no pattern matches, assume it's just a command name with no index
-    # Check if the command itself is a number (e.g., user typed just "1")
-    try:
-        index = int(raw_cmd)
-        return "", index - 1 # Treat bare number as index for default action (e.g. view)
-    except ValueError:
-        # It's just a command name
-         # Basic split for command name in case of spaces (take first word)
-        command_name = raw_cmd.split()[0]
-        return command_name, -1
 
 def parse_interactive_input(input_str: str) -> Tuple[str, Optional[str], Optional[int]]:
     """Parse interactive input into command, value, and (0-based) index.
@@ -561,16 +479,6 @@ def temp_file(suffix: Optional[str] = None, content: Optional[str] = None) -> Ge
     finally:
         if os.path.exists(path):
             os.remove(path)
-
-# Image handling
-def encode_image(image_path: str) -> str:
-    """Encode image to base64."""
-    try:
-        with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
-    except Exception as e:
-        Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
-        return ""
 
 # Token counting
 def count_tokens(messages: List[Dict], model: str = "gpt-4") -> int:
@@ -740,26 +648,18 @@ def get_project_dir(args: Dict[str, Any]) -> str:
     """Determine project directory based on command arguments."""
     # Ensure LLT_PATH is handled if None
     llt_path = os.getenv('LLT_PATH', '.')
-    Colors.print_colored(f"LLT_PATH: {llt_path}", Colors.BLUE)
-    
-    ll_dir_abs = os.path.abspath(args.get("ll_dir", os.path.join(llt_path, 'll')))
-    Colors.print_colored(f"ll_dir_abs: {ll_dir_abs}", Colors.BLUE)
-    
+        
     exec_dir = args.get('exec_dir', os.path.join(llt_path, 'exec'))
-    Colors.print_colored(f"exec_dir: {exec_dir}", Colors.BLUE)
 
     # Use current working directory if 'load' is not specified
     load_path = args.get("load")
-    Colors.print_colored(f"load_path: {load_path}", Colors.BLUE)
     
     if load_path and not load_path.endswith('.ll'):
         # When load is specified, project dir should be under exec_dir with same name
         project_dir = os.path.join(exec_dir, load_path)
-        Colors.print_colored(f"Setting project_dir from load_path: {project_dir}", Colors.BLUE)
     else:
         # If no 'load' specified, default to execution directory
         project_dir = os.getcwd()
-        Colors.print_colored(f"Setting project_dir to cwd: {project_dir}", Colors.BLUE)
 
     # Use input_handler to get the project directory path if interactive
     if not args.get('non_interactive'):
@@ -770,11 +670,9 @@ def get_project_dir(args: Dict[str, Any]) -> str:
             path_mode=True, # Keep path completion
             root_dir=exec_dir # Keep completion relative to exec_dir
         )
-        Colors.print_colored(f"Raw interactive input: {user_input}", Colors.BLUE)
 
         if user_input == ".":
             project_dir = os.getcwd()
-            Colors.print_colored(f"Input is '.', setting project_dir to cwd: {project_dir}", Colors.BLUE)
         elif user_input: # Check if user provided non-empty input other than "."
              # Use the input value, potentially resolving relative to exec_dir
              resolved_path = os.path.expanduser(user_input)
@@ -782,13 +680,6 @@ def get_project_dir(args: Dict[str, Any]) -> str:
                   project_dir = os.path.join(exec_dir, resolved_path)
              else:
                   project_dir = resolved_path
-             Colors.print_colored(f"Resolved interactive project_dir input: {project_dir}", Colors.BLUE)
-        # If user_input was empty, project_dir remains the default calculated earlier
-        else:
-             Colors.print_colored(f"Empty input, using default project_dir: {project_dir}", Colors.BLUE)
-
-    else:
-        Colors.print_colored(f"Non-interactive mode, using project_dir: {project_dir}", Colors.BLUE)
 
     # Ensure the final path is absolute and normalized
     return os.path.abspath(project_dir)
@@ -839,60 +730,12 @@ def process_file_changes(
             
     return modified_files, skipped_files
 
-def make_file_summary(modified: List[str], skipped: List[str]) -> str:
-    """Generate operation summary message."""
-    summary = ["File operations complete."]
-    
-    if modified:
-        summary.append("Modified/Created:")
-        summary.extend(f"  - {f}" for f in modified)
-    if skipped:
-        summary.append("Skipped:")
-        summary.extend(f"  - {f}" for f in skipped)
-        
-    return "\n".join(summary)
-
-def is_base64(text: str) -> bool:
-    try:
-        base64.b64decode(text)
-        return True
-    except Exception:
-        return False
 
 def confirm_action(prompt: str) -> bool:
     """Prompt the user to confirm an action."""
     # Use input_handler for consistency, though basic input is fine here
     response = input_handler.get_input(f"{prompt} (y/N)", default='n')
     return response.lower() == 'y'
-
-# Keep llt_input for main loop
-def llt_input(commands: List[str]) -> Tuple[str, int]:
-    """Get user input with command autocompletion."""
-    try:
-        # Set up command completion
-        def completer(text: str, state: int) -> Optional[str]:
-            options = [cmd for cmd in commands if cmd.startswith(text.lower())]
-            return options[state] if state < len(options) else None
-            
-        readline.set_completer(completer)
-        readline.set_completer_delims(" \t\n;")
-        # Check if using libedit (like on macOS)
-        doc_string = readline.__doc__
-        if doc_string and "libedit" in doc_string:
-            readline.parse_and_bind("bind ^I rl_complete")
-        else:
-            readline.parse_and_bind("tab: complete")
-            
-        # Get input with completion
-        raw_input = input("llt> ").strip()
-        return parse_cmd_string(raw_input)
-        
-    except (EOFError, KeyboardInterrupt):
-        print("\nExiting...")
-        sys.exit(0)
-    finally:
-        # Reset completer
-        readline.set_completer(None)
 
 
 class BackupManager:
