@@ -6,7 +6,9 @@ providers:
       gpt-4o: ["latest", "2024-05-13", "2024-08-06", "2024-08-08", mini, mini-2024-07-18]
       gpt-4: [turbo, 1106-preview, 0125-preview, "0314", "0613"]
       gpt-3.5: [turbo-0125, turbo, turbo-1106, turbo-instruct]
-      o1: [preview, mini, "2024-12-17"]
+      o1: [preview, mini, "2024-12-17", pro]
+      o3: [mini, "2025-04-16"]
+      o4: [mini]
     api_key: OPENAI_API_KEY
   mistral:  
     completion_url: https://api.mistral.ai/v1/chat/completions
