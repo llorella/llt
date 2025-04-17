@@ -256,7 +256,8 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         
         i += 1
     
-    llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
+    if not args.non_interactive:
+        llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
     # Log command history with metadata to ~/.llt/cli_command.json
     import json
     from datetime import datetime

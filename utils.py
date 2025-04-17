@@ -247,7 +247,7 @@ class InputHandler:
                 matches = [opt for opt in options if opt.lower().startswith(value.lower())]
                 if len(matches) == 1:
                     return matches[0]
-            return value
+            return value.strip() # Trim custom input
         
         return self.get_input(
             "Enter number or text",

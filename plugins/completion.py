@@ -55,8 +55,6 @@ def get_provider_details(model_name: str):
                     details.get("completion_url", None)
                 )
     raise ValueError(f"Model {model_name} not found in config.")
-
-
 def send_request(
     completion_url: str,
     api_key_string: str,
@@ -75,40 +73,72 @@ def send_request(
         "model": args.get('model'),
         "max_completion_tokens": args.get('max_tokens'),
         "temperature": args.get('temperature'),
-        "max_tokens": args.get('max_tokens'),
+        #"max_tokens": args.get('max_tokens'),
         "stream": True,
     }
 
     full_response_content = ""
+    response_buffer = []
+    final_status_code = None
+
     try:
         with requests.post(
             completion_url, headers=headers, json=data, stream=True
         ) as response:
-            response.raise_for_status()
             for chunk in response.iter_lines():
                 if chunk:
                     decoded_chunk = chunk.decode("utf-8")
+                    response_buffer.append(decoded_chunk) # buffer all chunks
+
                     if decoded_chunk.startswith("data: [DONE]"):
                         break
                     if decoded_chunk.startswith("data: "):
                         payload = decoded_chunk[len("data: "):]
-                        json_data = json.loads(payload)
-                        choice = json_data["choices"][0]
-                        delta = choice["delta"]
-                        finish_reason = choice["finish_reason"]
+                        try:
+                            json_data = json.loads(payload)
+                            choice = json_data.get("choices", [{}])[0]
+                            delta = choice.get("delta", {})
+                            finish_reason = choice.get("finish_reason")
 
-                        if finish_reason is None:
-                            text = delta.get("content") or delta.get("reasoning_content") or " "
-                            print(text, end="", flush=True)
-                            full_response_content += text
-                        if finish_reason == "stop":
-                            print("\r")
-                            break
+                            if finish_reason is None:
+                                text = delta.get("content") or delta.get("reasoning_content") or " "
+                                print(text, end="", flush=True)
+                                full_response_content += text
+                            if finish_reason == "stop":
+                                print("\r")
+                                break
+                        except json.JSONDecodeError:
+                            # Ignore chunks that are not valid JSON in the stream if needed,
+                            # but still buffer them in case they are part of an error message
+                            pass # Or add specific handling if non-JSON chunks are expected normally
+
+            final_status_code = response.status_code # Store status code after iteration
+
+        # Check status code after the stream is processed
+        if final_status_code and final_status_code >= 400:
+            Colors.print_colored(f"Request failed with status code: {final_status_code}", Colors.RED)
+            full_buffered_response = "\n".join(response_buffer)
+            try:
+                # Attempt to parse the entire buffered response as JSON
+                error_data = json.loads(full_buffered_response)
+                Colors.print_colored(f"Error response JSON: {json.dumps(error_data, indent=2)}", Colors.RED)
+            except json.JSONDecodeError:
+                # If not JSON, print the raw buffered response
+                Colors.print_colored(f"Error response text: {full_buffered_response}", Colors.RED)
+            # Optional: Re-raise an exception here if needed for upstream handling
+            # raise requests.exceptions.HTTPError(f"{final_status_code} Client Error", response=response_obj)
+            return Message(role="assistant", content=f"Error: Received status code {final_status_code}")
+
+
     except requests.RequestException as e:
-        Colors.print_colored(f"Request failed: {e}", Colors.RED)
-        if e.response is not None:
-            Colors.print_colored(f"Error details: {e.response.status_code}\n{e.response.text}", Colors.RED)
+        # This catches connection errors, etc., before a response is received
+        Colors.print_colored(f"Request failed (pre-response): {e}", Colors.RED)
+        # Print the full traceback for debugging connection errors
+        import traceback
+        Colors.print_colored(f"Full traceback: {traceback.format_exc()}", Colors.RED)
+        return Message(role="assistant", content=f"Error: {str(e)}")
 
+    # If status code was < 400, return the successful response
     return Message(role="assistant", content=full_response_content)
 
 
@@ -142,13 +172,19 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> M
         "max_tokens": args.get('max_tokens'),
     }
     
-    
+    try:
+        with anthropic_client.messages.stream(**params) as stream:
+            for text in stream.text_stream:
+                print(text, end="", flush=True)
+                response_content += text
+            print("\r")
+    except Exception as e:
+        Colors.print_colored(f"Anthropic API error: {str(e)}", Colors.RED)
+        # Print the full traceback for debugging
+        import traceback
+        Colors.print_colored(f"Full traceback: {traceback.format_exc()}", Colors.RED)
+        return Message(role="assistant", content=f"Error: {str(e)}")
         
-    with anthropic_client.messages.stream(**params) as stream:
-        for text in stream.text_stream:
-            print(text, end="", flush=True)
-            response_content += text
-        print("\r")
     return Message(role="assistant", content=response_content)
 
 
@@ -430,7 +466,8 @@ def change_role(messages: List[Message], args: Dict, index: int = -1) -> List[Me
     
     if new_value:
         messages[index]["role"] = new_value
-        Colors.print_colored(f"Changed role of message at index {index} to: {new_value}", Colors.GREEN)
+        if not args.get('non_interactive'):
+            Colors.print_colored(f"Changed role of message at index {index} to: {new_value}", Colors.GREEN)
     
     return messages
 

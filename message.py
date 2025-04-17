@@ -86,7 +86,8 @@ def prompt(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     """
     message = Message(role=dict["role"], content=dict["prompt"])
     messages += [message]
-    Colors.print_colored("Added new message to the conversation.", Colors.GREEN)
+    if not dict.get('non_interactive'):
+        Colors.print_colored("Added new message to the conversation.", Colors.GREEN)
     dict["prompt"] = None
     return messages
 
@@ -161,18 +162,31 @@ def detach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
 @llt
 def fold(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
-    Description: Combine last user message with the previous user message
+    Description: Fold contiguous messages of the same role into one
     Type: bool
     Default: false
     flag: fold
     short:
     """
+    if not messages:
+        return messages
+        
     initial_length = len(messages)
-    while len(messages) > 1 and messages[-2]["role"] == dict["role"]:
-        messages[-2]["content"] += "\n" + messages[-1]["content"]
-        messages.pop()
+    
+    current_role = messages[-1]["role"]
+    current_index = len(messages) - 1
+    
+    while current_index > 0:
+        if messages[current_index - 1]["role"] == current_role:
+            messages[current_index - 1]["content"] += "\n" + messages[current_index]["content"]
+            messages.pop(current_index)
+        else:
+            current_role = messages[current_index - 1]["role"]
+        current_index -= 1
+    
     folded_messages = initial_length - len(messages)
-    print(f"Folded {folded_messages} message(s).")
+    if not dict.get("non_interactive"):
+        Colors.print_colored(f"Folded {folded_messages} message(s).", Colors.GREEN)
     return messages
 
 
