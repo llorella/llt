@@ -12,29 +12,12 @@ from message import Message
 from plugins import llt
 from utils import (
     Colors, get_project_dir, get_valid_index,
-    confirm_action,
-    parse_markdown_for_codeblocks, language_extension_map,
-    detect_language_from_content,
-    TempFileManager, BackupManager,
+    confirm_action, language_extension_map,
+    iter_blocks,
+    temp_file, backup_manager,
     file_handler, input_handler, diff_handler,
-    encode_image_to_base64
 )
 
-temp_manager = TempFileManager()
-backup_manager = BackupManager()
-
-def iter_blocks(
-    message: Dict,
-    predicate: Optional[Callable] = None,
-    transform: Optional[Callable] = None
-) -> Iterator[Dict]:
-    """
-    Iterate through code blocks in a given message with optional filtering/transform.
-    """
-    blocks = parse_markdown_for_codeblocks(message["content"])
-    for block in blocks:
-        if not predicate or predicate(block):
-            yield transform(block) if transform else block
 
 def execute_code(code: str, language: str, timeout: int = 30) -> tuple[str, str]:
     """
@@ -57,7 +40,7 @@ def execute_code(code: str, language: str, timeout: int = 30) -> tuple[str, str]
       #  if args.get('non_interactive') and not args.get('auto'):
             # ask to cd to project dir
 
-        with temp_manager.temp_file(suffix=f".{language}", content=code) as temp_path:
+        with temp_file(suffix=f".{language}", content=code) as temp_path:
             try:
                 cmd = [*runners[language], code]
                 proc = subprocess.run(
@@ -206,7 +189,7 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         filepath = input_handler.get_path_input(
             f"Enter filename for {block['language']} block (default is {default_name})",
             default=default_name,
-            base_dir=project_dir
+            root_dir=project_dir
         )
         
         if os.path.exists(filepath):
@@ -278,7 +261,7 @@ def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
 
     editor = os.environ.get("EDITOR", "vim")
 
-    with temp_manager.temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
+    with temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
         try:
             subprocess.run([editor, temp_path], check=True)
             new_content = file_handler.read(temp_path)
@@ -351,7 +334,7 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     short: f
     """
     if not args.get('file') and not args.get('non_interactive') and not args.get('auto'):
-        file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), base_dir=os.getcwd())
+        file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), root_dir=os.getcwd())
     else:
         file_path = args.get('file', None)
 

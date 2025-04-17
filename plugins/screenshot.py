@@ -4,7 +4,7 @@ import shutil
 from datetime import datetime
 from typing import List, Dict
 from plugins import llt
-from utils import Colors, path_input
+from utils import Colors, get_path_input
 from message import Message
 import time
 
@@ -65,10 +65,10 @@ def screenshot(messages: List[Message], args: Dict, index: int = -1) -> List[Mes
     default_filename = f"screenshot_{timestamp}.png"
     
     if not args.get('non_interactive'):
-        output_path = path_input(
+        output_path = get_path_input(
             "Enter screenshot path",
             default=os.path.join(screenshot_dir, default_filename),
-            base_dir=screenshot_dir
+            root_dir=screenshot_dir
         )
     else:
         output_path = os.path.join(screenshot_dir, args.get('screenshot') or default_filename)

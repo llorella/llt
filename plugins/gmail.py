@@ -3,13 +3,14 @@ import json
 import base64
 from dataclasses import dataclass
 from typing import List, Dict
-from typing import Optional
+from typing import Optional, Union
 import traceback
-from utils import Colors, content_input, get_valid_index
+from utils import Colors, get_input, get_valid_index
 from logger import llt_logger
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
+from google.auth.external_account_authorized_user import Credentials as ExternalAccountCredentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
@@ -47,7 +48,7 @@ def load_config(config_path: str = DEFAULT_CONFIG_PATH) -> Dict:
 def get_credentials(
     credentials_path: str = DEFAULT_CREDS_PATH,
     token_path: str = DEFAULT_TOKEN_PATH
-) -> Optional[Credentials]:
+) -> Optional[Union[Credentials, ExternalAccountCredentials]]:
     """Get or refresh Gmail API credentials."""
     try:
         creds = None
@@ -125,8 +126,8 @@ def send_email(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
             to_email = args.get('to') or config.get('default_to')
             subject = args.get('subject') or config.get('default_subject', 'Message from LLT')
         else:
-            to_email = content_input("To email address", default=config.get('default_to', ''))
-            subject = content_input("Subject", default=config.get('default_subject', 'Message from LLT'))
+            to_email = get_input("To email address", default=config.get('default_to', ''))
+            subject = get_input("Subject", default=config.get('default_subject', 'Message from LLT'))
         
         if not to_email:
             error_msg = "No recipient email address provided"

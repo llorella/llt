@@ -81,13 +81,13 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
         default_val = info['default']
 
         if flag_str in used_flags:
-            llt_logger.warning(f"Duplicate plugin flag '{flag_str}' in {plugin_name}")
+            llt_logger.log_info(f"Duplicate plugin flag '{flag_str}' in {plugin_name}", {"plugin": plugin_name})
         used_flags.add(flag_str)
 
         cli_flags = [f"--{flag_str}"]
         if short_str:
             if short_str in used_shorts:
-                llt_logger.warning(f"Duplicate short flag '-{short_str}' in {plugin_name}")
+                llt_logger.log_info(f"Duplicate short flag '-{short_str}' in {plugin_name}", {"plugin": plugin_name})
             else:
                 cli_flags.append(f"--{short_str}")
             used_shorts.add(short_str)
@@ -132,12 +132,15 @@ def load_plugins(plugin_dir: str) -> None:
             file_path = os.path.join(plugin_dir, filename)
             module_name = filename[:-3]
             spec = importlib.util.spec_from_file_location(module_name, file_path)
-            try:
-                module = importlib.util.module_from_spec(spec)
-                if module and spec.loader:
-                    spec.loader.exec_module(module)
-            except ImportError as e:
-                llt_logger.log_error(f"Failed to import {module_name}", {"error": str(e)})
+            if spec and spec.loader:
+                try:
+                    module = importlib.util.module_from_spec(spec)
+                    if module:
+                        spec.loader.exec_module(module)
+                except ImportError as e:
+                    llt_logger.log_error(f"Failed to import {module_name}", {"error": str(e)})
+            else:
+                llt_logger.log_error(f"Could not load spec for plugin: {module_name}", {"path": file_path})
 
 
 def help(messages, args, index):

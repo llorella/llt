@@ -2,7 +2,7 @@ from typing import List, Dict
 import os
 import json
 from plugins import llt
-from utils import get_valid_index, content_input, list_input, language_extension_map, input_handler
+from utils import get_valid_index, get_input, language_extension_map, input_handler
 from logger import llt_logger
 
 def load_xml_tags() -> List[str]:
@@ -38,9 +38,9 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     if not args.get('non_interactive') and not args.get('auto'):
         # If there are existing tags, offer them as options
         if existing_tags:
-            tag_name = list_input(existing_tags, f"Select or enter new tag name (default is {args.get('xml_wrap')})")
+            tag_name = get_input(f"Select or enter new tag name (default is {args.get('xml_wrap')})", existing_tags)
         else:
-            tag_name = content_input("Enter tag name")
+            tag_name = get_input("Enter tag name")
         index = get_valid_index(messages, "xml_wrap content of", index)
     tag_name = tag_name or args.get('xml_wrap')
     # Add new tag to list and save
@@ -124,7 +124,7 @@ def code_block(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     language = args.get('code_block', 'bash')
     if not args.get('non_interactive') and not args.get('auto'):
         index = get_valid_index(messages, "wrap in code block", index)
-        language = list_input(list(language_extension_map.keys()), f"Select programming language (default is {language})") or language
+        language = get_input(f"Select programming language (default is {language})", list(language_extension_map.keys()), language)
 
     language = language.lower()
     if language in language_extension_map:

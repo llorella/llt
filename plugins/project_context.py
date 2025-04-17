@@ -20,8 +20,8 @@ import pathspec
 from plugins import llt
 from message import Message
 from utils import (
-    Colors, iter_blocks,
-    get_project_dir, temp_file
+    Colors,
+    get_project_dir, temp_file, iter_blocks,
 )
 
 # --- Constants ---
@@ -43,8 +43,6 @@ DEFAULT_IGNORED_PATTERNS = {
     "*.class", "*.jar", "*.war", "*.ear", "*.DS_Store"
 }
 
-
-# --- Helper Functions ---
 
 def _is_binary_file(filepath: str, chunk_size: int = 1024) -> bool:
     """Check if a file is binary by looking for null bytes in the first chunk."""
@@ -302,8 +300,10 @@ def include_project_context(messages: List[Dict], args: Dict, index: int = -1) -
             Required: False
     """
     project_dir = get_project_dir(args)
+    print(f"Project directory: {project_dir}")
     directory = args.get('directory', project_dir)
     abs_dir = os.path.abspath(directory)
+    print(f"Absolute directory: {abs_dir}")
 
     # Combine default ignores with user-provided ones
     ignored_patterns = set(DEFAULT_IGNORED_PATTERNS)

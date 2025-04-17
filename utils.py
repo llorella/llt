@@ -17,7 +17,7 @@ from math import ceil
 import tempfile
 from io import BytesIO
 import pprint
-from typing import List, Dict, Tuple, Optional, ContextManager, Any, Callable, TypeVar, Union, Generator
+from typing import List, Dict, Tuple, Optional, Iterator, Any, Callable, TypeVar, Union, Generator, Sequence
 from enum import Enum
 from dataclasses import dataclass
 from pathlib import Path
@@ -78,20 +78,19 @@ class InputHandler:
     def _setup_readline(self):
         """Configure readline with common settings."""
         readline.set_completer_delims(" \t\n;")
-        if "libedit" in readline.__doc__:
+        if readline.__doc__ and "libedit" in readline.__doc__:
             readline.parse_and_bind("bind ^I rl_complete")
         else:
             readline.parse_and_bind("tab: complete")
-            
     def _create_completer(self, 
                          options: Optional[List[str]] = None, 
                          path_mode: bool = False,
-                         base_dir: Optional[str] = None) -> Callable[[str, int], Optional[str]]:
+                         root_dir: Optional[str] = None) -> Callable[[str, int], Optional[str]]:
         """Create a completer function based on mode."""
         def path_completer(text: str, state: int) -> Optional[str]:
             text = os.path.expanduser(text)
-            if base_dir and not os.path.isabs(text):
-                text = os.path.join(base_dir, text)
+            if root_dir and not os.path.isabs(text):
+                text = os.path.join(root_dir, text)
             
             dir_path = os.path.dirname(text) or "."
             try:
@@ -103,9 +102,9 @@ class InputHandler:
                 files = [os.path.join(dir_path, f) + ('/' if os.path.isdir(os.path.join(dir_path, f)) else '')
                         for f in files]
                 
-                # Make paths relative to base_dir if specified
-                if base_dir:
-                    files = [os.path.relpath(f, base_dir) for f in files]
+                # Make paths relative to root_dir if specified
+                if root_dir:
+                    files = [os.path.relpath(f, root_dir) for f in files]
                     
                 return sorted(files)[state] if state < len(files) else None
             except (OSError, IndexError):
@@ -124,7 +123,7 @@ class InputHandler:
                  options: Optional[List[str]] = None,
                  default: Any = None,
                  path_mode: bool = False,
-                 base_dir: Optional[str] = None,
+                 root_dir: Optional[str] = None,
                  validator: Optional[Callable[[str], bool]] = None,
                  transform: Optional[Callable[[str], Any]] = None) -> Any:
         """
@@ -135,11 +134,11 @@ class InputHandler:
             options: List of autocomplete options
             default: Default value if input is empty
             path_mode: Enable path completion mode
-            base_dir: Base directory for path completion
+            root_dir: Base directory for path completion
             validator: Optional validation function
             transform: Optional transformation function
         """
-        readline.set_completer(self._create_completer(options, path_mode, base_dir))
+        readline.set_completer(self._create_completer(options, path_mode, root_dir))
         
         try:
             while True:
@@ -191,18 +190,18 @@ class InputHandler:
     def get_path_input(self, 
                       prompt: str,
                       default: Optional[str] = None,
-                      base_dir: Optional[str] = None) -> str:
+                      root_dir: Optional[str] = None) -> str:
         """Get path input with filesystem autocomplete."""
         result = self.get_input(
             prompt,
             default=default,
             path_mode=True,
-            base_dir=base_dir
+            root_dir=root_dir
         ).strip()  # Strip any trailing whitespace
         
         # Handle path resolution
-        if base_dir and not os.path.isabs(os.path.expanduser(result)):
-            return os.path.join(base_dir, result)
+        if root_dir and not os.path.isabs(os.path.expanduser(result)):
+            return os.path.join(root_dir, result)
         return os.path.expanduser(result)
 
     def get_list_input(self, 
@@ -375,6 +374,7 @@ class DiffHandler:
 input_handler = InputHandler()
 file_handler = FileHandler()
 diff_handler = DiffHandler()
+# temp_manager = TempFileManager() # Moved instantiation after class definition
 
 # Utility functions that use the handlers
 def get_input(prompt: str, options: Optional[List[str]] = None, 
@@ -390,8 +390,11 @@ def get_path_input(prompt: str, default: Optional[str] = None,
         return os.path.join(root_dir, path)
     return os.path.expanduser(path)
 
-def get_valid_index(messages: List[Dict], prompt: str, default: int = -1) -> int:
-    """Get valid message index with bounds checking."""
+def get_valid_index(messages: Sequence[Dict], prompt: str, default: int = -1) -> int:
+    """Get a valid index from the user for a list of messages."""
+    if not messages:
+        return default
+
     def validate(value: str) -> bool:
         try:
             idx = int(value) if value else default
@@ -533,110 +536,133 @@ def prompt_and_write_file(final_path: str, new_content: str, diff_text: str) -> 
 # Markdown parsing utilities
 def detect_language_from_content(content: str) -> Optional[str]:
     """Try to detect language from code content."""
+    # Simplified language detection based on common keywords
     indicators = {
         'python': ['def ', 'import ', 'class ', 'if __name__'],
         'javascript': ['function ', 'const ', 'let ', 'var '],
         'typescript': ['interface ', 'type ', '<T>', ': string'],
         'html': ['<!DOCTYPE', '<html', '<div', '<body'],
-        'css': ['{', '@media', '#', '.class'],
+        'css': ['{', '@media', '#', '.class'], # CSS detection simplified
         'shell': ['#!/bin/', 'echo ', 'export ', 'sudo '],
         'rust': ['fn ', 'impl ', 'pub ', 'use '],
         'go': ['func ', 'package ', 'import (', 'type '],
+        'java': ['public class', 'import java.', 'System.out.println'],
+        'c': ['#include', 'int main', 'printf'],
+        'cpp': ['#include', 'std::cout', 'int main'],
+        'sql': ['SELECT ', 'INSERT ', 'UPDATE ', 'CREATE TABLE'],
+        'yaml': [': ', '- '], # Basic YAML indicators
     }
-    
+    # Lowercase content once for efficiency
+    content_lower = content.lower()
+    lines = content_lower.splitlines()
+
+    # Check first few lines and keywords
+    line_limit = min(10, len(lines))
+    content_sample = "\n".join(lines[:line_limit])
+
     for lang, patterns in indicators.items():
-        if any(pattern in content for pattern in patterns):
-            return lang
-    return None
+        if any(pattern.lower() in content_sample for pattern in patterns):
+             # Add extra check for shell scripts starting with shebang
+             if lang == 'shell' and lines and lines[0].startswith('#!'):
+                  return lang
+             elif lang != 'shell': # Avoid matching generic patterns too easily
+                  return lang
 
-def extract_code_blocks(markdown: str) -> List[Dict]:
-    """Extract code blocks from markdown text."""
-    code_pattern = re.compile(r"```(\S+)\n(.*?)\n```", re.DOTALL)
-    matches = code_pattern.findall(markdown)
-    blocks = []
-    for token, code in matches:
-        # Check if token is a filename (contains a period)
-        if '.' in token:
-            # It's a filename, extract extension and map to language
-            _, ext = os.path.splitext(token)
-            language = None
-            # Find language by extension
-            for lang, extension in language_extension_map.items():
-                if extension == ext:
-                    language = lang
-                    break
-            if not language:
-                # Default to extension without dot as language if not found
-                language = ext[1:] if ext else "text"
-            blocks.append({
-                "language": language,
-                "content": code.strip(),
-                "filename": token
-            })
-        else:
-            # Regular language specifier
-            blocks.append({
-                "language": token,
-                "content": code.strip(),
-                "filename": None
-            })
-    return blocks
-
-def fuzzy_find_filename(line: str) -> str:
-    """Find something that looks like a path or filename."""
-    filename_pattern = re.compile(r'([^\s"\':]+(\.[^\s"\':]+)+)')
-    matches = filename_pattern.findall(line)
-    for full_match, _ in matches:
-        return full_match
-    return ""
-
-def extract_filename_from_codeblock(code: str, language: str) -> Optional[str]:
-    """Try to find filename in code block comments."""
-    comment_prefix = language_comment_map.get(language, "#")
-    lines = code.split('\n')
-    max_lines_to_check = min(5, len(lines))
-
-    for i in range(max_lines_to_check):
-        line = lines[i].strip()
-        if not line:
-            continue
-
-        if language == "css":
-            if line.startswith("/*") and line.endswith("*/"):
-                content = line[2:-2].strip()
-                if filename := fuzzy_find_filename(content):
-                    return filename
-        else:
-            if line.startswith(comment_prefix):
-                content = line[len(comment_prefix):].strip()
-                if filename := fuzzy_find_filename(content):
-                    return filename
+    # If no specific language detected, return None or 'text'
     return None
 
 def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
-    """Parse markdown and extract code blocks with metadata."""
-    blocks = extract_code_blocks(markdown)
-    for i, block in enumerate(blocks):
-        block["index"] = i
-        if not block["filename"]:
-            block["filename"] = extract_filename_from_codeblock(
-                block["content"],
-                block["language"]
-            )
+    """Parse markdown and extract code blocks with metadata, including filename."""
+    blocks = []
+    # Regex to find code blocks, capturing language/filename and content
+    # Handles optional language/filename on the first line
+    code_pattern = re.compile(r"```(\S*)?\s*\n(.*?)\n```", re.DOTALL)
+
+    # Regex to find potential filenames within comments (simple version)
+    filename_comment_pattern = re.compile(r'(?:#|//|--|/\*)\s*file:\s*(\S+)', re.IGNORECASE)
+    # Simple fuzzy filename pattern (e.g., path/to/file.py)
+    fuzzy_filename_pattern = re.compile(r'\b(?:[a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}\b')
+
+
+    for i, match in enumerate(code_pattern.finditer(markdown)):
+        first_line_token = match.group(1) or "" # Language or potential filename
+        content = match.group(2).strip()
+        language = "text" # Default
+        filename = None
+
+        # Try to determine language and filename from the first line token
+        if '.' in first_line_token and '/' not in first_line_token: # Likely a filename
+            filename = first_line_token
+            _, ext = os.path.splitext(filename)
+            ext = ext.lstrip('.')
+            # Map extension to language
+            for lang_key, lang_ext in language_extension_map.items():
+                 if lang_ext.lstrip('.') == ext:
+                     language = lang_key
+                     break
+            if language == "text": # If mapping failed, use extension itself
+                 language = ext if ext else "text"
+        elif first_line_token: # Likely a language identifier
+            language = first_line_token.lower()
+
+        # If filename wasn't on the first line, try searching comments
+        if not filename:
+            comment_match = filename_comment_pattern.search(content.split('\n', 5)[0]) # Check first few lines
+            if comment_match:
+                 filename = comment_match.group(1)
+            else:
+                 # Try fuzzy matching if no explicit comment found
+                 fuzzy_match = fuzzy_filename_pattern.search(content.split('\n', 5)[0])
+                 if fuzzy_match:
+                      # Be cautious with fuzzy matches, might be URLs or other strings
+                      potential_fn = fuzzy_match.group(0)
+                      # Basic sanity check (avoid overly long strings, etc.)
+                      if len(potential_fn) < 100 and potential_fn.count('.') < 5:
+                           # filename = potential_fn # Decided against auto-assigning fuzzy matches for now
+                           pass # Let user specify filename if needed
+
+
+        # Fallback: Use detected language if identifier wasn't valid language
+        if language not in language_extension_map and language not in language_comment_map:
+            detected_lang = detect_language_from_content(content)
+            if detected_lang:
+                language = detected_lang
+
+        blocks.append({
+            "index": i,
+            "language": language,
+            "content": content,
+            "filename": filename # May be None
+        })
+
     return blocks
 
 # File operations utilities
 def get_project_dir(args: Dict[str, Any]) -> str:
     """Determine project directory based on command arguments."""
-    ll_dir_abs = os.path.abspath(args.get("ll_dir", os.getcwd()))
-    load_abs = os.path.abspath(args["load"])    
-    rel = os.path.relpath(load_abs, ll_dir_abs)
-    base, ext = os.path.splitext(rel)
-    project_dir = input_handler.get_path_input(
-        "Enter project directory",
-        default=os.path.join(args['exec_dir'], base or os.getcwd()),
-        base_dir=args['exec_dir']
-    )
+    # Ensure LLT_PATH is handled if None
+    llt_path = os.getenv('LLT_PATH', '.')
+    
+    ll_dir_abs = os.path.abspath(args.get("ll_dir", os.path.join(llt_path, 'll')))
+    exec_dir = args.get('exec_dir', os.path.join(llt_path, 'exec'))
+
+    # Use current working directory if 'load' is not specified
+    load_path = args.get("load")
+    if load_path and not load_path.endswith('.ll'):
+        # When load is specified, project dir should be under exec_dir with same name
+        project_dir = os.path.join(exec_dir, load_path)
+    else:
+        # If no 'load' specified, default to execution directory
+        project_dir = os.getcwd()
+
+    # Use input_handler to get the project directory path if interactive
+    if not args.get('non_interactive'):
+        project_dir = input_handler.get_path_input(
+            "Enter project directory",
+            default=project_dir,
+            root_dir=exec_dir
+        )
+
     return project_dir
 
 def process_file_changes(
@@ -705,231 +731,13 @@ def is_base64(text: str) -> bool:
     except Exception:
         return False
 
-def tokenize(messages: List[Dict[str, any]], args: Dict, index: int = -1) -> int:
-    """Count tokens in message content."""
-    content = ""
-    for msg in messages:
-        msg_content = msg["content"]
-        if isinstance(msg_content, str):
-            content += msg_content
-        elif isinstance(msg_content, list):
-            for c in msg_content:
-                if c.get("type") == "text":
-                    content += c["text"]
-    encoding = tiktoken.encoding_for_model(args.get("model","gpt-4"))
-    num_tokens = 4 + len(encoding.encode(content))
-    Colors.print_colored(f"Tokens used: {num_tokens}", Colors.BLUE)
-    return num_tokens
-
-class TempFileManager:
-    """Manage temporary files with cleanup."""
-    
-    def __init__(self):
-        self.temp_files = set()
-        
-    def create(self, suffix: Optional[str] = None, content: Optional[str] = None) -> str:
-        """Create a temporary file with optional content."""
-        try:
-            fd, path = tempfile.mkstemp(suffix=suffix)
-            self.temp_files.add(path)
-            
-            if content is not None:
-                with os.fdopen(fd, 'w') as f:
-                    f.write(content)
-            else:
-                os.close(fd)
-                
-            return path
-            
-        except Exception as e:
-            Colors.print_colored(f"Error creating temporary file: {e}", Colors.RED)
-            if 'fd' in locals():
-                os.close(fd)
-            raise
-            
-    @contextmanager
-    def temp_file(self, suffix: Optional[str] = None, content: Optional[str] = None) -> Generator[str, None, None]:
-        """Context manager for temporary file usage."""
-        path = None
-        try:
-            path = self.create(suffix, content)
-            yield path
-        finally:
-            if path:
-                self.cleanup(path)
-                
-    def cleanup(self, path: Optional[str] = None) -> None:
-        """Clean up specific or all temporary files."""
-        if path is None:
-            # Cleanup all temp files
-            while self.temp_files:
-                path = self.temp_files.pop()
-                try:
-                    if os.path.exists(path):
-                        os.remove(path)
-                except Exception as e:
-                    Colors.print_colored(f"Error removing temporary file {path}: {e}", Colors.RED)
-        elif path in self.temp_files:
-            # Cleanup specific file
-            try:
-                if os.path.exists(path):
-                    os.remove(path)
-                self.temp_files.remove(path)
-            except Exception as e:
-                Colors.print_colored(f"Error removing temporary file {path}: {e}", Colors.RED)
-                
-    def __del__(self):
-        """Ensure cleanup on object destruction."""
-        self.cleanup() 
-        
-        
-
-class BackupManager:
-    """Manage file backups with versioning."""
-    
-    def __init__(self, backup_dir: str = ".backups"):
-        self.backup_dir = backup_dir
-        self.manifest_path = os.path.join(backup_dir, "manifest.json")
-        self._load_manifest()
-        
-    def _load_manifest(self) -> None:
-        """Load or initialize backup manifest."""
-        os.makedirs(self.backup_dir, exist_ok=True)
-        try:
-            if os.path.exists(self.manifest_path):
-                with open(self.manifest_path, 'r') as f:
-                    self.manifest = json.load(f)
-            else:
-                self.manifest = {"files": {}}
-        except Exception as e:
-            Colors.print_colored(f"Error loading backup manifest: {e}", Colors.RED)
-            self.manifest = {"files": {}}
-            
-    def _save_manifest(self) -> None:
-        """Save backup manifest."""
-        try:
-            with open(self.manifest_path, 'w') as f:
-                json.dump(self.manifest, f, indent=2)
-        except Exception as e:
-            Colors.print_colored(f"Error saving backup manifest: {e}", Colors.RED)
-            
-    def create_backup(self, filepath: str) -> Optional[str]:
-        """Create a new backup version of a file."""
-        if not os.path.exists(filepath):
-            return None
-            
-        try:
-            rel_path = os.path.relpath(filepath)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_name = f"{os.path.basename(filepath)}.{timestamp}"
-            backup_path = os.path.join(self.backup_dir, backup_name)
-            
-            # Create backup
-            shutil.copy2(filepath, backup_path)
-            
-            # Update manifest
-            if rel_path not in self.manifest["files"]:
-                self.manifest["files"][rel_path] = []
-            self.manifest["files"][rel_path].append({
-                "timestamp": timestamp,
-                "backup_path": backup_name
-            })
-            
-            self._save_manifest()
-            return backup_path
-            
-        except Exception as e:
-            Colors.print_colored(f"Error creating backup of {filepath}: {e}", Colors.RED)
-            return None
-            
-    def restore_backup(self, filepath: str, version: Optional[str] = None) -> bool:
-        """Restore a specific or latest backup version."""
-        try:
-            rel_path = os.path.relpath(filepath)
-            if rel_path not in self.manifest["files"]:
-                return False
-                
-            versions = self.manifest["files"][rel_path]
-            if not versions:
-                return False
-                
-            if version:
-                backup_info = next(
-                    (v for v in versions if v["timestamp"] == version),
-                    None
-                )
-            else:
-                backup_info = versions[-1]  
-                
-            if not backup_info:
-                return False
-                
-            backup_path = os.path.join(self.backup_dir, backup_info["backup_path"])
-            if not os.path.exists(backup_path):
-                return False
-                
-            # Create new backup of current state if it exists
-            if os.path.exists(filepath):
-                self.create_backup(filepath)
-                
-            # Restore backup
-            shutil.copy2(backup_path, filepath)
-            return True
-            
-        except Exception as e:
-            Colors.print_colored(f"Error restoring backup: {e}", Colors.RED)
-            return False
-            
-    def list_backups(self, filepath: Optional[str] = None) -> Dict[str, List[Dict]]:
-        """List available backups for file or all files."""
-        if filepath:
-            rel_path = os.path.relpath(filepath)
-            return {
-                rel_path: self.manifest["files"].get(rel_path, [])
-            }
-        return self.manifest["files"]
-        
-    def cleanup_old_backups(self, max_versions: int = 5, filepath: Optional[str] = None) -> None:
-        """Remove old backup versions keeping last N."""
-        try:
-            files = [os.path.relpath(filepath)] if filepath else list(self.manifest["files"].keys())
-            
-            for file in files:
-                versions = self.manifest["files"].get(file, [])
-                if len(versions) > max_versions:
-                    # Remove old versions
-                    for version in versions[:-max_versions]:
-                        backup_path = os.path.join(
-                            self.backup_dir,
-                            version["backup_path"]
-                        )
-                        if os.path.exists(backup_path):
-                            os.remove(backup_path)
-                    
-                    # Update manifest
-                    self.manifest["files"][file] = versions[-max_versions:]
-                    
-            self._save_manifest()
-            
-        except Exception as e:
-            Colors.print_colored(f"Error cleaning up old backups: {e}", Colors.RED) 
-
 def confirm_action(prompt: str) -> bool:
     """Prompt the user to confirm an action."""
-    return input(f"{prompt} (y/N) [N]: ").lower() == 'y'
+    # Use input_handler for consistency, though basic input is fine here
+    response = input_handler.get_input(f"{prompt} (y/N)", default='n')
+    return response.lower() == 'y'
 
-# Compatibility layer for existing functions
-def path_input(prompt: str, default: Optional[str] = None, base_dir: Optional[str] = None) -> str:
-    return input_handler.get_path_input(prompt, default, base_dir)
-
-def list_input(options: List[str], prompt: str = "", allow_custom: bool = True) -> str:
-    """Get input from a list of options with number and text selection."""
-    return input_handler.get_list_input(options, prompt, allow_custom)
-
-def content_input(prompt: str = "Enter content") -> str:
-    """Get input from the user."""
-    return input_handler.get_input(prompt)
-
+# Keep llt_input for main loop
 def llt_input(commands: List[str]) -> Tuple[str, int]:
     """Get user input with command autocompletion."""
     try:
@@ -940,7 +748,9 @@ def llt_input(commands: List[str]) -> Tuple[str, int]:
             
         readline.set_completer(completer)
         readline.set_completer_delims(" \t\n;")
-        if "libedit" in readline.__doc__:
+        # Check if using libedit (like on macOS)
+        doc_string = readline.__doc__
+        if doc_string and "libedit" in doc_string:
             readline.parse_and_bind("bind ^I rl_complete")
         else:
             readline.parse_and_bind("tab: complete")
@@ -956,88 +766,47 @@ def llt_input(commands: List[str]) -> Tuple[str, int]:
         # Reset completer
         readline.set_completer(None)
 
-# New DiffHandler implementation
-@dataclass
-class DiffLine:
-    type: str  # '+', '-', '~', ' '
-    content: str
-    old_number: Optional[int] = None
-    new_number: Optional[int] = None
 
-    def colorize(self) -> str:
-        color_map = {
-            '+': Colors.GREEN,
-            '-': Colors.RED,
-            '~': Colors.YELLOW,
-            ' ': ''
-        }
-        return f"{color_map[self.type]}{self.content}{Colors.RESET}"
+class BackupManager:
+    def __init__(self):
+        self.backups = []
 
-def generate_diff(old_content: str, new_content: str, context_lines: int = 3) -> str:
-    """Generate a unified diff string from old_content to new_content."""
-    differ = difflib.SequenceMatcher(None, old_content.splitlines(), new_content.splitlines())
-    diff_lines = []
-    
-    for tag, i1, i2, j1, j2 in differ.get_opcodes():
-        if tag == 'equal':
-            start = max(i1, i1 + (i2 - i1 - context_lines))
-            end = min(i2, i1 + context_lines)
-            for i in range(start, end):
-                line = DiffLine(
-                    type=' ',
-                    content=old_content.splitlines()[i],
-                    old_number=i + 1,
-                    new_number=j1 + (i - i1) + 1
-                )
-                diff_lines.append(line)
-        elif tag in ('replace', 'delete', 'insert'):
-            if tag in ('replace', 'delete'):
-                for i in range(i1, i2):
-                    line = DiffLine(
-                        type='-',
-                        content=old_content.splitlines()[i],
-                        old_number=i + 1
-                    )
-                    diff_lines.append(line)
-            if tag in ('replace', 'insert'):
-                for j in range(j1, j2):
-                    line = DiffLine(
-                        type='+',
-                        content=new_content.splitlines()[j],
-                        new_number=j + 1
-                    )
-                    diff_lines.append(line)
-    
-    return format_diff(diff_lines)
+    def create_backup(self, filepath: str) -> None:
+        backup_path = f"{filepath}.backup"
+        try:
+            shutil.copy2(filepath, backup_path)
+            self.backups.append(backup_path)
+        except Exception as e:
+            Colors.print_colored(f"Error creating backup: {e}", Colors.RED)
 
-def format_diff(diff_lines: Union[List[DiffLine], str], show_numbers: bool = True) -> str:
-    """Format diff lines for display."""
-    if isinstance(diff_lines, str):
-        return diff_lines
-        
-    output = []
-    num_width = 5
-
-    for line in diff_lines:
-        if show_numbers:
-            old = str(line.old_number or '').rjust(num_width)
-            new = str(line.new_number or '').rjust(num_width)
-            prefix = f"{old}│{new}│"
-        else:
-            prefix = f"{line.type} "
-        output.append(f"{prefix} {line.colorize()}")
-
-    return "\n".join(output)
-
-def encode_image_to_base64(image_path: str) -> str:
-    """Legacy compatibility function for image encoding."""
-    try:
-        with open(image_path, "rb") as f:
-            return base64.b64encode(f.read()).decode("utf-8")
-    except Exception as e:
-        Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
-        return ""
-
-
-temp_manager = TempFileManager()
 backup_manager = BackupManager()
+
+
+def iter_blocks(
+    message: Dict,
+    predicate: Optional[Callable[[Dict], bool]] = None,
+    transform: Optional[Callable[[Dict], Dict]] = None
+) -> Iterator[Dict]:
+    """
+    Iterate through code blocks in a given message's content.
+    Uses parse_markdown_for_codeblocks utility. Handles potential non-string content.
+    """
+    content = message.get("content", "")
+    if not isinstance(content, str):
+         if isinstance(content, list):
+              text_parts = [str(part) for part in content if isinstance(part, (str, int, float))]
+              content = "\\n".join(text_parts)
+         else:
+              Colors.print_colored("Warning: Cannot iterate blocks on non-text/list content.", Colors.YELLOW)
+              return iter([])
+
+    if not callable(parse_markdown_for_codeblocks):
+        Colors.print_colored("Error: parse_markdown_for_codeblocks is not available.", Colors.RED)
+        return iter([])
+
+    blocks = parse_markdown_for_codeblocks(content)
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        if not predicate or predicate(block):
+            yield transform(block) if transform else block

@@ -2,14 +2,14 @@
 
 import os
 import json
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 from plugins import llt
-from utils import path_input, get_valid_index, list_input, Colors
+from utils import get_path_input, get_valid_index, get_input, Colors
 
 class Message(Dict):
     role: str
-    content: any
+    content: Any
 
 
 @llt
@@ -22,10 +22,10 @@ def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     short: ll
     """
     if not dict["non_interactive"] and not dict["auto"]:
-        ll_path = path_input(
+        ll_path = get_path_input(
             "Enter path to ll file",
             default=dict["load"],
-            base_dir=dict["ll_dir"]
+            root_dir=dict["ll_dir"]
         )
     else:
         ll_path = os.path.join(dict["ll_dir"], dict["load"])
@@ -57,10 +57,10 @@ def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]
         dict["write"] = dict["load"]
         
     if not dict["non_interactive"] and not dict["auto"] or not dict["write"]:
-        ww_path = path_input(
+        ww_path = get_path_input(
             "Enter path to write ll file",
             default=dict["write"] if dict["write"] else dict["load"],
-            base_dir=dict["ll_dir"]
+            root_dir=dict["ll_dir"]
         )
     else:
         ww_path = os.path.join(dict["ll_dir"], dict["write"])
@@ -123,10 +123,10 @@ def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     if dict["attach"]:
         ll_path = os.path.join(dict["ll_dir"], dict["attach"])
     else:
-        ll_path = path_input(
+        ll_path = get_path_input(
             "Enter path to attach ll file",
             default=None,
-            base_dir=dict["ll_dir"]
+            root_dir=dict["ll_dir"]
         )
 
     if ll_path is None:
@@ -203,7 +203,7 @@ def insert(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
         message_index = get_valid_index(messages, "insert", index)
     else:
         message_index = index
-    messages.insert(message_index, {"role": "user", "content": dict.get("insert", "")})
+    messages.insert(message_index, Message(role="user", content="Message inserted."))
     Colors.print_colored(f"Inserted new message at index {message_index + 1}.", Colors.GREEN)
     return messages
 
@@ -219,7 +219,7 @@ def change_role(messages: List[Message], dict: Dict, index: int = -1) -> List[Me
     """
     if not dict.get('non_interactive'):
         index = get_valid_index(messages, "modify role of", index)
-        new_role = list_input(["user", "assistant", "system", "tool"], "Select new role for the message")
+        new_role = get_input("Select new role for the message", ["user", "assistant", "system", "tool"])
     else:
         new_role = dict.get('role', 'user')
     messages[index]["role"] = new_role

@@ -129,13 +129,13 @@ def create_parser() -> argparse.ArgumentParser:
     # Directory configuration
     dir_group = parser.add_argument_group('Directory Configuration')
     dir_group.add_argument('--cmd_dir', type=str, 
-                          default=os.path.join(os.getenv('LLT_PATH'), 'cmd'),
+                          default=os.path.join(os.getenv('LLT_PATH', '~/.llt'), 'cmd'),
                           help="Command directory path")
     dir_group.add_argument('--exec_dir', type=str,
-                          default=os.path.join(os.getenv('LLT_PATH'), 'exec'),
+                          default=os.path.join(os.getenv('LLT_PATH', '~/.llt'), 'exec'),
                           help="Execution directory path")
     dir_group.add_argument('--ll_dir', type=str,
-                          default=os.path.join(os.getenv('LLT_PATH'), 'll'),
+                          default=os.path.join(os.getenv('LLT_PATH', '~/.llt'), 'll'),
                           help="Language files directory path")
     
     # Mode settings
