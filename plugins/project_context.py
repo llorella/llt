@@ -269,35 +269,10 @@ def execute_code(code: str, language: str, timeout: int = 30, project_dir: Optio
 def include_project_context(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
     Description: Include content of project files based on filters.
+    Type: bool
+    Default: false
     flag: include_project_context
     short: ipc
-    Args:
-        directory:
-            Type: str
-            Description: Directory to scan (defaults to project root).
-            Required: False
-        ignore:
-            Type: str
-            Description: Comma-separated patterns/names to ignore (adds to defaults).
-            Required: False
-        glob:
-            Type: str
-            Description: Comma-separated glob patterns to filter files by name (e.g., '*.py,*.js').
-            Required: False
-        no-gitignore:
-            Type: bool
-            Description: Do not respect .gitignore files.
-            Default: False
-            Required: False
-        no-git-ls:
-            Type: bool
-            Description: Do not attempt to use 'git ls-files'.
-            Default: False
-            Required: False
-        max-size:
-            Type: int
-            Description: Maximum total size of included files in bytes.
-            Required: False
     """
     project_dir = get_project_dir(args)
     print(f"Project directory: {project_dir}")
