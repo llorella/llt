@@ -9,6 +9,8 @@ import re
 from collections import deque
 from dataclasses import dataclass
 import sys
+import json
+from datetime import datetime
 
 _plugins_registry: Dict[str, Dict[str, Any]] = {}
 
@@ -142,6 +144,9 @@ def load_plugins(plugin_dir: str) -> None:
             else:
                 llt_logger.log_error(f"Could not load spec for plugin: {module_name}", {"path": file_path})
 
+    # Generate the tool spec after loading all plugins
+    generate_tool_spec("llt_tools.json")
+
 
 def help(messages, args, index):
     print(', '.join(_plugins_registry.keys()))
@@ -262,8 +267,6 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
     if not args.non_interactive:
         llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
     # Log command history with metadata to ~/.llt/cli_command.json
-    import json
-    from datetime import datetime
     
     command_log = {
         "timestamp": datetime.now().isoformat(),
@@ -274,3 +277,42 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         json.dump(command_log, f)
         f.write("\n")
     return command_queue
+
+def generate_tool_spec(output_path: str):
+    """Generates a tool specification JSON file based on registered plugins."""
+    tool_spec = {
+        "name": "llt",
+        "description": "Terminal tool for managing language model conversations with plugin commands",
+        "index": {
+            "description": "Message index to operate on (-1 for last message)",
+            "type": "integer",
+            "default": -1
+        },
+        "functions": {}
+    }
+
+    for _, info in _plugins_registry.items():
+        flag = info.get('flag')
+        description = info.get('description')
+        arg_type = info.get('type')  # Get the type
+        default_val = info.get('default') # Get the default
+
+        # Skip plugins without a flag (like the internal help/quit) or basic description
+        if not flag or not description:
+            continue
+            
+        # Add function description and other relevant fields
+        function_spec = {"description": description}
+        if arg_type:
+            function_spec["type"] = arg_type
+        if default_val is not None: # Explicitly check for None
+            function_spec["default"] = default_val
+            
+        tool_spec["functions"][flag] = function_spec    
+
+    try:
+        with open(output_path, 'w') as f:
+            json.dump(tool_spec, f, indent=2)
+        llt_logger.log_info(f"Tool specification generated successfully at {output_path}")
+    except IOError as e:
+        llt_logger.log_error(f"Failed to write tool specification to {output_path}", {"error": str(e)})
