@@ -5,7 +5,7 @@ main.py - llt, the little language terminal
 A functional implementation of the llt that processes commands and manages 
 conversations with language models. This version follows functional programming principles 
 and careful parameter ordering inspired by Haskell's design patterns, while maintaining
-compatibility with the existing plugin system.
+compatibility with the existing tool system.
 """
 
 import os
@@ -24,9 +24,9 @@ from collections import deque
 
 from logger import llt_logger
 from utils import Colors, llt_interactive_input, parse_interactive_input
-from plugins import (
-    load_plugins,
-    add_plugin_arguments,
+from tools import (
+    load_tools,
+    add_tool_arguments,
     init_cmd_map,
     schedule_startup_commands,
     ScheduledCommand
@@ -45,7 +45,7 @@ MessagePlaceholder = Dict[str, Any]
 @dataclass(frozen=True)
 class AppState:
     """
-    Immutable application state container with plugin compatibility helpers.
+    Immutable application state container with tool compatibility helpers.
     
     Attributes:
         messages: List of conversation messages
@@ -70,18 +70,18 @@ class AppState:
         """Create new state with updated command queue."""
         return AppState(self.messages, self.context, new_queue)
 
-    def to_plugin_args(self) -> Tuple[Messages, Context]:
-        """Convert state to plugin-compatible arguments."""
+    def to_tool_args(self) -> Tuple[Messages, Context]:
+        """Convert state to tool-compatible arguments."""
         return self.messages.copy(), dict(self.context)
 
     @classmethod
-    def from_plugin_result(
+    def from_tool_result(
         cls,
         messages: Messages,
         context: Context,
         command_queue: deque[ScheduledCommand]
     ) -> 'AppState':
-        """Create new state from plugin execution results."""
+        """Create new state from tool execution results."""
         return cls(messages, context, command_queue)
 
 class FunctionComposition:
@@ -183,7 +183,7 @@ def calculate_messages_delta(old_messages: Messages, new_messages: Messages) -> 
     placeholders = [create_placeholder(msg, i + old_len) for i, msg in enumerate(new_messages[old_len:])]
     return placeholders, [] # Best guess: treat as append
 
-def get_plugin_source(cmd_map: CommandMap, cmd_name: str) -> Optional[str]:
+def get_tool_source(cmd_map: CommandMap, cmd_name: str) -> Optional[str]:
     """Attempt to find the source module of a command."""
     if cmd_name in cmd_map:
         try:
@@ -247,7 +247,7 @@ def log_command_execution(
     old_state: AppState,
     new_state: AppState,
     command: ScheduledCommand,
-    cmd_map: CommandMap
+    cmd_map: CommandMap,
 ) -> Optional[str]:
     """Logs the execution of a command and the resulting state change."""
     session_id = old_state.context.get("session_id")
@@ -276,7 +276,7 @@ def log_command_execution(
             "name": command.name,
             "value": command.value,
             "index": command.index,
-            "plugin_source": get_plugin_source(cmd_map, command.name)
+            "tool_source": get_tool_source(cmd_map, command.name)
         },
         "state_delta": {
             "context_changed": context_delta,
@@ -284,7 +284,7 @@ def log_command_execution(
             "messages_removed_indices": messages_removed_indices # Placeholder for future use
         },
         "resource_references": resource_references,
-        "output_summary": { # Basic summary, could be enhanced by plugins returning status
+        "output_summary": { # Basic summary, could be enhanced by tools returning status
              "status": "success", # Assume success if we got here
              "new_message_count": len(messages_added)
          }
@@ -363,14 +363,14 @@ def process_command(
 ) -> AppState:
     """
     Process a single command and return new state.
-    Maintains compatibility with existing plugins by managing mutable state copies.
+    Maintains compatibility with existing tools by managing mutable state copies.
     """
     if cmd.name in cmd_map:
         if not state.context.get('non_interactive'):
             print(f"\nllt> {cmd.name}")
         try:
-            # Create mutable copies for plugin compatibility
-            messages, context = state.to_plugin_args()
+            # Create mutable copies for tool compatibility
+            messages, context = state.to_tool_args()
             
             # If the command has a specific value, temporarily override the context
             original_value = None
@@ -380,15 +380,20 @@ def process_command(
                 # Set the specific value for this command execution
                 context[cmd.name] = cmd.value
             
-            # Execute plugin with mutable structures
-            new_messages = cmd_map[cmd.name](messages, context, cmd.index)
+            # Execute tool with mutable structures
+            result = cmd_map[cmd.name](messages, context, cmd.index)
             
-            # Restore original value if needed
-            if original_value is not None:
-                context[cmd.name] = original_value
+            # Handle new return signature (messages or tuple of messages and commands)
+            if isinstance(result, tuple) and len(result) == 2:
+                new_messages, commands = result
+                command_queue = state.command_queue.copy()
+                for cmd in commands:
+                    command_queue.append(cmd)
+            else:
+                new_messages = result
+                command_queue = state.command_queue.copy()
             
-            # Handle LLT role messages
-            command_queue = state.command_queue.copy()
+            # Handle LLT tool messages for backward compatibility
             if new_messages and isinstance(new_messages[-1], dict) and new_messages[-1].get("role") == "tool":
                 tool_content = new_messages[-1].get("content", "")
                 if not state.context.get("non_interactive"):
@@ -401,11 +406,23 @@ def process_command(
                     command_queue.append(ScheduledCommand(cmd_name, index if index is not None else -1, value=value))
                     new_messages = new_messages[:-1]
             
-            # Create new state with updates from plugin
-            intermediate_state = AppState.from_plugin_result(new_messages, context, command_queue)
+            # Restore original value if needed
+            if original_value is not None:
+                context[cmd.name] = original_value
+            
+            # Create new state with updates from tool
+            # Explicit typing to satisfy the linter
+            messages_list: Messages = list(new_messages)
+            context_dict: Context = dict(context)
+            cmd_queue: deque[ScheduledCommand] = command_queue
+            
+            intermediate_state = AppState(
+                messages=messages_list,
+                context=context_dict,
+                command_queue=cmd_queue
+            )
 
             # --- Log Command Execution ---
-            # Pass the original 'state' as old_state, and the result as new_state
             last_log_id = log_command_execution(state, intermediate_state, cmd, cmd_map)
             # Update context with the latest log ID for the next step's parent_id
             final_context = dict(intermediate_state.context)
@@ -507,13 +524,13 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
 
 def main() -> None:
     """Application entry point."""
-    # Load plugins
-    plugin_dir = os.path.join(os.getenv("LLT_DIR", ""), "plugins")
-    load_plugins(plugin_dir)
+    # Load tools
+    tool_dir = os.path.join(os.getenv("LLT_DIR", ""), "tools")
+    load_tools(tool_dir)
     
     # Initialize parser and arguments
     parser = create_parser()
-    add_plugin_arguments(parser)
+    add_tool_arguments(parser)
     args = parser.parse_args()
     
     # Initialize directories

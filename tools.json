@@ -1,6 +1,6 @@
 {
   "name": "llt",
-  "description": "Terminal tool for managing language model conversations with plugin commands",
+  "description": "Terminal tool for managing language model conversations with tool commands",
   "index": {
     "description": "Message index to operate on (-1 for last message)",
     "type": "integer",

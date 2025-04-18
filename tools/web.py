@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import json
 
 from utils import get_valid_index, Colors
-from plugins import llt
+from tools import llt
 from logger import llt_logger
 
 ContentBlock = namedtuple('ContentBlock', ['type', 'content', 'attributes'])

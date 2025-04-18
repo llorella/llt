@@ -1,4 +1,3 @@
-# completion.py
 import requests
 import os
 import yaml
@@ -11,8 +10,18 @@ from message import Message
 from utils import (
     Colors, file_handler, input_handler, InputValue
 )
-from plugins import llt
+from tools import llt
+from logger import llt_logger # Assuming logger is accessible
 
+# Type mapping from tool spec to JSON schema
+TYPE_MAP = {
+    "int": "integer",
+    "float": "number",
+    "str": "string",
+    "string": "string",
+    "bool": "boolean",
+    "boolean": "boolean",
+}
 
 def load_config(path: str):
     try:
@@ -333,9 +342,21 @@ def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[M
         f"{msg['role']}: {msg['content'][:100]}..." for msg in last_messages
     ])
 
-    # Load and process tools
+    # Load and process tools from the generated spec
     try:
-        tools_path = os.path.join(os.getenv("LLT_DIR", ""), "tools.json")
+        # Assuming llt_tools.json is in the current working directory or accessible path
+        tools_path = "llt_tools.json" 
+        if not os.path.exists(tools_path):
+             # Fallback to checking LLT_DIR if not in CWD
+             llt_dir = os.getenv("LLT_DIR", "")
+             if llt_dir:
+                 tools_path = os.path.join(llt_dir, "llt_tools.json")
+
+        if not os.path.exists(tools_path):
+             llt_logger.log_info(f"Tool specification file not found at default path or in LLT_DIR: {tools_path}", {"path": tools_path})
+             print(f"{Colors.YELLOW}Warning: Tool specification file '{tools_path}' not found. Tool suggestions may be unavailable.{Colors.RESET}")
+             return messages # Or handle appropriately
+
         with open(tools_path, 'r') as f:
             tools_data = json.load(f)
             tools: Iterable[anthropic.types.ToolParam] = []
@@ -343,83 +364,204 @@ def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[M
             
             for func_name, func_data in tools_data.get("functions", {}).items():
                 tool_names.append(func_name)
-                schema: anthropic.types.ToolParam = {
-                    "name": func_name,
-                    "description": func_data.get("description", ""),
-                    "input_schema": {
-                        "type": "object",
-                        "properties": {
-                            "index": {
-                                "type": "integer",
-                                "description": "Message index to operate on (-1 for last message)",
-                                "default": -1
-                            },
-                            **{
-                                param: {"type": "string", "description": desc} 
-                                for param, desc in func_data.get("parameters", {}).items()
-                            }
-                        },
-                        "required": ["index"]
+                
+                tool_desc = func_data.get("description", "")
+                tool_type = func_data.get("type")
+                tool_default = func_data.get("default")
+
+                # Base properties including the standard 'index'
+                properties = {
+                    "index": {
+                        "type": "integer",
+                        "description": "Message index to operate on (-1 for last message)",
+                        "default": -1
                     }
                 }
-                tools = [schema]
+                # Base required properties
+                required = ["index"]
+
+                # Add specific property for the tool's argument if it's not a boolean flag
+                if tool_type and tool_type not in ("bool", "boolean"):
+                    schema_type = TYPE_MAP.get(tool_type, "string") # Default to string if type unknown
+                    prop_name = "value" # Generic name for the value parameter
+                    properties[prop_name] = {
+                        "type": schema_type,
+                        "description": f"Value for the {func_name} command ({tool_desc})" 
+                    }
+                    if tool_default is not None:
+                        # Attempt to cast default based on type for JSON schema compliance
+                        try:
+                            if schema_type == "integer":
+                                properties[prop_name]["default"] = int(tool_default)
+                            elif schema_type == "number":
+                                properties[prop_name]["default"] = float(tool_default)
+                            elif schema_type == "boolean": # Should not happen here, but for safety
+                                properties[prop_name]["default"] = str(tool_default).lower() == 'true'
+                            else:
+                                properties[prop_name]["default"] = str(tool_default)
+                        except (ValueError, TypeError):
+                             llt_logger.log_info(f"Could not cast default value '{tool_default}' for {func_name}", {"tool": func_name})
+                             properties[prop_name]["default"] = str(tool_default) # Keep as string if cast fails
+
+                    # Only require the value if no default is provided
+                    if tool_default is None:
+                       required.append(prop_name)
+
+                # Even for booleans, Anthropic might expect a property definition
+                elif tool_type in ("bool", "boolean"):
+                     prop_name = "enabled" # Simple name for boolean flag
+                     properties[prop_name] = {
+                         "type": "boolean",
+                         "description": f"Enable the {func_name} flag ({tool_desc})",
+                         "default": str(tool_default).lower() == 'true' if tool_default is not None else False
+                     }
+                     # Boolean flags are typically optional in schema
+                
+                schema: anthropic.types.ToolParam = {
+                    "name": func_name,
+                    "description": tool_desc,
+                    "input_schema": {
+                        "type": "object",
+                        "properties": properties,
+                        "required": required
+                    }
+                }
+                tools.append(schema)
+            
+            # --- Rest of the function (prompt construction, API call) ---
+            # This part remains largely the same, just uses the new 'tools' list
+            # For debugging, let's print the constructed tools and return for now
+            print("-------------------------")
+            llt_logger.log_info("Constructed tools for suggestion.", {"count": len(tools)})
+            # TODO: Remove the return below and implement the actual Anthropic API call
+            # return messages 
+            # -------------------------------------------------------------
+
+    except FileNotFoundError:
+        llt_logger.log_error(f"Tool specification file not found: {tools_path}", {"path": tools_path})
+        print(f"{Colors.RED}Error: Tool specification file '{tools_path}' not found.{Colors.RESET}")
+        return messages
+    except json.JSONDecodeError:
+        llt_logger.log_error(f"Error decoding JSON from tool specification file: {tools_path}", {"path": tools_path})
+        print(f"{Colors.RED}Error: Could not decode JSON from '{tools_path}'. Is it valid?{Colors.RESET}")
+        return messages
     except Exception as e:
-        print(f"{Colors.RED}Error loading tools: {str(e)}{Colors.RESET}")
+        llt_logger.log_error(f"An unexpected error occurred while processing tools: {str(e)}", {"exception_type": type(e).__name__})
+        print(f"{Colors.RED}Error processing tools: {str(e)}{Colors.RESET}")
         return messages
 
-    # Construct optimized prompt
-    optimized_prompt = f"""Given the conversation context and available tools, determine the most appropriate next action:
+    # Construct optimized prompt (Example - adapt as needed)
+    optimized_prompt = f"""# LLT Command Suggestion Task
 
-1. CONTEXT:
-- Current model: {args.get('model')}
-- Available tools: {', '.join(tool_names)}
-- Conversation state:
-{conversation_context}
+## CONTEXT
+- **Available Tools**: {', '.join(tool_names)}
+- **Current Conversation**:
+<conversation_context>
+    {''.join([f"Message {i}: {msg['role']} - {msg['content'][:50]}..." for i, msg in enumerate(messages)])}
+</conversation_context>
 
-2. CONSTRAINTS:
-- Must output only: <command> <index>
-- Index defaults to -1 for most recent
-- Commands must be valid LLT plugins
-- Consider conversation flow and state
+## OBJECTIVE
+Analyze the conversation and suggest the most helpful LLT command that would assist the user right now.
 
-3. EVALUATION CRITERIA:
-- Immediate utility to conversation
-- Command appropriateness
-- Context relevance
-- Action impact
+## CONSTRAINTS
+- Suggest only valid LLT tools from the available tools list
+- Commands must follow format: <command> [arguments] [index]
+- Index parameter defaults to -1 (most recent message) if not specified
+- Focus on what would be most immediately useful given the conversation state
 
-OUTPUT FORMAT:
-<command> <index>
+## REASONING PROCESS
+1. Identify the current conversation topic or task
+2. Consider what action would most logically help the user next:
+   - Does the user need to save/load conversation? (load, write)
+   - Would they benefit from editing content? (edit_content, remove)
+   - Is code execution or file manipulation needed? (execute, write_file)
+   - Would they benefit from copying content? (copy)
+   - Is file inclusion helpful? (file_include)
+3. Select the most appropriate command with relevant arguments
 
-NO explanation or additional text."""
+## EVALUATION CRITERIA
+- **Utility**: How immediately useful is this command?
+- **Relevance**: How well does it match the conversation context?
+- **Appropriateness**: Is this the right tool for the current situation?
+- **Impact**: How significantly will this improve the user's workflow?
 
-    system_prompt = "You are a tool selection specialist. Your only task is to analyze context and select the most appropriate tool command and index. Respond with exactly two values: command and index."
-    tool_choice: anthropic.types.ToolChoiceParam = {"type": "auto"}
+## OUTPUT FORMAT
+<command> [arguments] [index]
+w
+
+Examples:
+- write --file conversation.ll
+- execute --language python
+- copy --blocks --lang python -1
+- file_include
+
+"""
+    
     try:
-        completion = anthropic_client.messages.create(
-            model=args.get('model', "claude-3-sonnet-20241022"),
-            system=system_prompt,
+        llt_logger.log_info("Requesting tool suggestion from Anthropic.", {"model": "claude-3-opus-20240229"}) # Or your preferred model
+        response = anthropic_client.messages.create(
+            model="claude-3-7-sonnet-20250219", # Replace with your desired model
+            max_tokens=1024,
             messages=[{"role": "user", "content": optimized_prompt}],
-            temperature=0.3,  # Lower temperature for more focused tool selection
-            max_tokens=50,    # Minimal tokens needed for command + index
-            tools=tools,
-            tool_choice=tool_choice # Let the model decide if a tool is needed
+            tools=list(tools), # Pass the constructed tools list
+            tool_choice={"type": "auto"} # Let Anthropic decide
         )
 
-        for content in completion.content:
-            print(f"{Colors.CYAN}Processing content type: {content.type}{Colors.RESET}")
-            if content.type == "text":
-                # Parse the response into command and index
-                response = content.text.strip().split()
-                if len(response) == 2 and response[0] in tool_names:
-                    command, idx = response
-                    messages.append(Message(role="tool", content=f"{command} {idx}"))
-                    print(f"{Colors.GREEN}Tool selected: {command} at {str(index)}{Colors.RESET}")
-                else:
-                    print(f"{Colors.RED}Invalid tool selection format{Colors.RESET}")
-            elif content.type == "tool_use":
-                messages.append(Message(role="tool", content=f"Tool use: {content.name} with args {content.input}"))
-                print(f"{Colors.GREEN}Tool use suggested: {content.name}{Colors.RESET}")
+        llt_logger.log_info("Received tool suggestion response from Anthropic.", {"response_stop_reason": response.stop_reason})
+
+        # Process the response to extract tool use
+        suggested_tool_use = None
+        if response.content:
+            # Track counts of each block type
+            block_type_counts = {}
+            
+            for block in response.content:
+                block_type = block.type
+                # Increment count for this block type
+                block_type_counts[block_type] = block_type_counts.get(block_type, 0) + 1
+                
+                # Log each block
+                llt_logger.log_info(f"Processing response block of type: {block_type}", 
+                                   {"block_index": block_type_counts[block_type]})
+                
+                # Still capture the first tool_use block for further processing
+                if block.type == 'tool_use' and suggested_tool_use is None:
+                    suggested_tool_use = block
+                    llt_logger.log_info("Extracted tool use suggestion.", 
+                                       {"tool_name": block.name, "tool_input": block.input})
+
+        if suggested_tool_use:
+            # TODO: Decide how to present this suggestion to the user
+            # Maybe format it nicely and print it?
+            # Maybe add it as a new message?
+            tool_name = suggested_tool_use.name
+            tool_input = suggested_tool_use.input
+            suggestion_text = f"Suggested command: {tool_name}"
+            
+            # Format arguments nicely
+            args_list = []
+            if isinstance(tool_input, dict):
+                 for k, v in tool_input.items():
+                     # Skip default index if it's -1 maybe? Or always show?
+                     # if k == 'index' and v == -1: continue 
+                     if isinstance(v, str):
+                         args_list.append(f'--{k} "{v}"') # Quote string args
+                     elif isinstance(v, bool) and v:
+                          args_list.append(f'--{k}') # Add boolean flag if true
+                     elif not isinstance(v, bool):
+                          args_list.append(f'--{k} {v}') # Add other args
+            
+            if args_list:
+                suggestion_text += " " + " ".join(args_list)
+
+            print(f"{Colors.CYAN}AI Suggestion: {suggestion_text}{Colors.RESET}")
+            
+            # Example: Add suggestion as an assistant message
+            # messages.append({"role": "assistant", "content": f"Suggestion: Consider using the '{tool_name}' tool. Input: {tool_input}"})
+            
+        else:
+            llt_logger.log_info("No specific tool use suggested by Anthropic.")
+            print(f"{Colors.YELLOW}AI did not suggest a specific tool.{Colors.RESET}")
 
     except Exception as e:
         print(f"{Colors.RED}Error during tool suggestion: {str(e)}{Colors.RESET}")

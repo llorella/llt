@@ -17,7 +17,7 @@ from googleapiclient.errors import HttpError
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-from plugins import llt
+from tools import llt
 
 # Gmail API configuration
 SCOPES = ['https://www.googleapis.com/auth/gmail.send']

@@ -65,6 +65,15 @@ class LLTLog:
         }
         self.logger.info(self._format_message(log_entry))
 
+    def log_warning(self, message: str, context: Dict[str, Any] = None) -> None:
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'message': message,
+            'context': context
+        }
+        self.logger.warning(self._format_message(log_entry))
+
+
     def count_tokens(self, messages: Dict[str, Any]) -> int:
         # Implement token counting logic here
         # For now, we'll use a simple character count as a placeholder

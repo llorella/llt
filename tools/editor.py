@@ -8,7 +8,7 @@ import traceback
 import re
 
 from message import Message
-from plugins import llt
+from tools import llt
 from utils import (
     Colors, get_project_dir, get_valid_index,
     confirm_action, language_extension_map,
@@ -135,18 +135,18 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     messages[index]["content"] = content
     return messages
 
-
 @llt
-def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+def write_file(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
-    Description: Edit code blocks in messages at project root path
+    Description: Write code blocks to files at project root path
     Type: bool
     Default: false
-    flag: apply
-    short: edit
+    flag: write_file
+    short: wf
     """
     msg_index = get_valid_index(messages, "write code blocks from", index)
     lang_filter = args.get('lang')
+    target_file = args.get('target')
     create_backups = args.get('backup', True)
     show_diff = not args.get('no_diff', False)
     force = args.get('force', False)
@@ -162,7 +162,8 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
 
     for block in iter_blocks(
         messages[msg_index],
-        predicate=lambda b: not lang_filter or b["language"] == lang_filter
+        predicate=lambda b: (not lang_filter or b["language"] == lang_filter) and 
+                           (not target_file or b["filename"] == target_file)
     ):
         print(f"\n{block['language']} block:")
         Colors.print_colored(block["content"], Colors.CYAN)

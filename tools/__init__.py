@@ -1,8 +1,8 @@
-# plugins/__init__.py
+# tools/__init__.py
 
 import os
 import importlib.util
-from typing import Callable, Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional, List, Tuple, TypeVar, cast, Union
 from logger import llt_logger
 import argparse
 import re
@@ -12,12 +12,20 @@ import sys
 import json
 from datetime import datetime
 
-_plugins_registry: Dict[str, Dict[str, Any]] = {}
+_tools_registry: Dict[str, Dict[str, Any]] = {}
 
+# Export symbols for tool authors
+__all__ = ['llt', 'ScheduledCommand', 'ToolResult']
+
+# Type aliases for tool return values
+T = TypeVar('T')
+Messages = List[Dict[str, Any]]
+CommandsToQueue = List['ScheduledCommand']
+ToolResult = Union[Messages, Tuple[Messages, CommandsToQueue]]
 
 def llt(fn: Callable) -> Callable:
     """
-    Decorator that registers a plugin by parsing its docstring.
+    Decorator that registers a tool by parsing its docstring.
 
     Each docstring should contain lines in the format:
 
@@ -29,9 +37,9 @@ def llt(fn: Callable) -> Callable:
 
     Example:
         @llt
-        def example(...):
+        def example(messages, context, index=-1):
             \"\"\"
-            Description: Example plugin
+            Description: Example tool
             Type: bool
             Default: false
             flag: example
@@ -39,7 +47,7 @@ def llt(fn: Callable) -> Callable:
             \"\"\"
             ...
 
-    We'll store these in _plugins_registry for later argument parsing and command mapping.
+    We'll store these in _tools_registry for later argument parsing and command mapping.
     """
     doc = fn.__doc__ or ""
 
@@ -55,7 +63,7 @@ def llt(fn: Callable) -> Callable:
     flag = flag_match.group(1).strip() if flag_match else fn.__name__
     short = short_match.group(1).strip() if short_match else None
 
-    _plugins_registry[fn.__name__] = {
+    _tools_registry[fn.__name__] = {
         'function': fn,
         'description': description,
         'type': arg_type,
@@ -66,14 +74,14 @@ def llt(fn: Callable) -> Callable:
     return fn
 
 
-def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
+def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
     """
-    Create argparse flags from the collected plugin registry.
+    Create argparse flags from the collected tool registry.
     """
     used_flags = set()
     used_shorts = set()
 
-    for plugin_name, info in _plugins_registry.items():
+    for tool_name, info in _tools_registry.items():
         flag_str = info['flag']
         if info['type'] is None:
             continue
@@ -83,13 +91,13 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
         default_val = info['default']
 
         if flag_str in used_flags:
-            llt_logger.log_info(f"Duplicate plugin flag '{flag_str}' in {plugin_name}", {"plugin": plugin_name})
+            llt_logger.log_info(f"Duplicate tool flag '{flag_str}' in {tool_name}", {"tool": tool_name})
         used_flags.add(flag_str)
 
         cli_flags = [f"--{flag_str}"]
         if short_str:
             if short_str in used_shorts:
-                llt_logger.log_info(f"Duplicate short flag '-{short_str}' in {plugin_name}", {"plugin": plugin_name})
+                llt_logger.log_info(f"Duplicate short flag '-{short_str}' in {tool_name}", {"tool": tool_name})
             else:
                 cli_flags.append(f"--{short_str}")
             used_shorts.add(short_str)
@@ -121,17 +129,17 @@ def add_plugin_arguments(parser: argparse.ArgumentParser) -> None:
                 help=description
             )
 
-def load_plugins(plugin_dir: str) -> None:
+def load_tools(tool_dir: str) -> None:
     """
-    Dynamically load Python scripts from 'plugin_dir'.
+    Dynamically load Python scripts from 'tool_dir'.
     Each script can import @llt from here to register functions.
     """
-    if not os.path.isdir(plugin_dir):
+    if not os.path.isdir(tool_dir):
         return
 
-    for filename in os.listdir(plugin_dir):
+    for filename in os.listdir(tool_dir):
         if filename.endswith(".py") and not filename.startswith("__"):
-            file_path = os.path.join(plugin_dir, filename)
+            file_path = os.path.join(tool_dir, filename)
             module_name = filename[:-3]
             spec = importlib.util.spec_from_file_location(module_name, file_path)
             if spec and spec.loader:
@@ -142,25 +150,25 @@ def load_plugins(plugin_dir: str) -> None:
                 except ImportError as e:
                     llt_logger.log_error(f"Failed to import {module_name}", {"error": str(e)})
             else:
-                llt_logger.log_error(f"Could not load spec for plugin: {module_name}", {"path": file_path})
+                llt_logger.log_error(f"Could not load spec for tool: {module_name}", {"path": file_path})
 
-    # Generate the tool spec after loading all plugins
+    # Generate the tool spec after loading all tools
     generate_tool_spec("llt_tools.json")
 
 
-def help(messages, args, index):
-    print(', '.join(_plugins_registry.keys()))
+def help(messages, context, index):
+    print(', '.join(_tools_registry.keys()))
     return messages
 
 
-def quit(messages, args, index):
+def quit(messages, context, index):
     exit(0)
 
 def init_cmd_map() -> Dict[str, Callable]:
-    """Initialize a command map with plugin commands and their abbreviations."""
+    """Initialize a command map with tool commands and their abbreviations."""
     n_abbv = lambda s, n=1: s[:n].lower()
     cmd_map = {}
-    for _, info in _plugins_registry.items():
+    for _, info in _tools_registry.items():
         cmd_name = info['flag']
         if cmd_name not in cmd_map:
             cmd_map[cmd_name] = info['function']
@@ -186,19 +194,20 @@ class ScheduledCommand:
     index: int  # Position in message list or -1
     args: Optional[dict] = None  # Any additional args needed for command
     value: Optional[Any] = None  # Store the specific value for this command instance
+
 def schedule_startup_commands(args) -> deque[ScheduledCommand]:
-    """Schedule CLI plugin args into a queue of commands to execute in order they were serialized"""
+    """Schedule CLI tool args into a queue of commands to execute in order they were serialized"""
     command_queue: deque[ScheduledCommand] = deque()
     cli_command = ["llt"]
     
-    # Create mapping of flag variations to plugin names
-    flag_to_plugin = {}
-    for plugin_name, info in _plugins_registry.items():
+    # Create mapping of flag variations to tool names
+    flag_to_tool = {}
+    for tool_name, info in _tools_registry.items():
         flag = info['flag']
         short = info['short']
-        flag_to_plugin[f"--{flag}"] = flag
+        flag_to_tool[f"--{flag}"] = flag
         if short:
-            flag_to_plugin[f"--{short}"] = flag
+            flag_to_tool[f"--{short}"] = flag
     
     # Process arguments in pairs to handle value arguments
     i = 0
@@ -210,12 +219,12 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         stripped_arg = arg.lstrip('--')
         
         # Handle flag with or without value
-        if arg in flag_to_plugin:  # Full flag match
-            flag = flag_to_plugin[arg]
+        if arg in flag_to_tool:  # Full flag match
+            flag = flag_to_tool[arg]
             if hasattr(args, flag):
                 arg_type = None
                 # Find the argument type from the registry
-                for _, info in _plugins_registry.items():
+                for _, info in _tools_registry.items():
                     if info['flag'] == flag:
                         arg_type = info['type']
                         break
@@ -248,7 +257,7 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
                             if value is not None:
                                 cli_command.append(str(value))  # Add default value
                             command_queue.append(ScheduledCommand(flag, -1, value=value))
-        elif stripped_arg in [info['flag'] for _, info in _plugins_registry.items()]:
+        elif stripped_arg in [info['flag'] for _, info in _tools_registry.items()]:
             # Direct flag name match (for cases where arg might be after an =)
             if hasattr(args, stripped_arg):
                 # Handle --flag=value format
@@ -279,10 +288,10 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
     return command_queue
 
 def generate_tool_spec(output_path: str):
-    """Generates a tool specification JSON file based on registered plugins."""
+    """Generates a tool specification JSON file based on registered tools."""
     tool_spec = {
         "name": "llt",
-        "description": "Terminal tool for managing language model conversations with plugin commands",
+        "description": "Terminal tool for managing language model conversations with tool commands",
         "index": {
             "description": "Message index to operate on (-1 for last message)",
             "type": "integer",
@@ -291,13 +300,13 @@ def generate_tool_spec(output_path: str):
         "functions": {}
     }
 
-    for _, info in _plugins_registry.items():
+    for _, info in _tools_registry.items():
         flag = info.get('flag')
         description = info.get('description')
         arg_type = info.get('type')  # Get the type
         default_val = info.get('default') # Get the default
 
-        # Skip plugins without a flag (like the internal help/quit) or basic description
+        # Skip tools without a flag (like the internal help/quit) or basic description
         if not flag or not description:
             continue
             

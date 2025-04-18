@@ -1,14 +1,14 @@
 from typing import List, Dict
 import os
 import json
-from plugins import llt
+from tools import llt
 from utils import get_valid_index, input_handler, language_extension_map, input_handler
 from logger import llt_logger
 
 def load_xml_tags() -> List[str]:
     """Load previously used XML tags."""
     try:
-        with open(os.path.join(os.environ.get("LLT_DIR", "~/llt"), 'plugins/xml_tags.json'), 'r') as f:
+        with open(os.path.join(os.environ.get("LLT_DIR", "~/llt"), 'tools/xml_tags.json'), 'r') as f:
             data = json.load(f)
             return data.get('tags', [])
     except (FileNotFoundError, json.JSONDecodeError):
@@ -17,7 +17,7 @@ def load_xml_tags() -> List[str]:
 def save_xml_tags(tags: List[str]) -> None:
     """Save XML tags to file."""
     try:
-        with open(os.path.join(os.environ.get("LLT_DIR", "~/llt"), 'plugins/xml_tags.json'), 'w') as f:
+        with open(os.path.join(os.environ.get("LLT_DIR", "~/llt"), 'tools/xml_tags.json'), 'w') as f:
             json.dump({'tags': list(set(tags))}, f, indent=2)
     except Exception as e:
         llt_logger.log_error(f"Error saving XML tags: {e}")

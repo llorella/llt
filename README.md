@@ -1,6 +1,6 @@
 # llt (little language tool)
 
-A powerful command-line interface and programmatic tool for managing AI conversations through transformative operations on message logs. llt provides a flexible plugin ecosystem for tasks like code editing, file manipulation, model interactions, synthetic data generation, and more.
+A powerful command-line interface and programmatic tool for managing AI conversations through transformative operations on message logs. llt provides a flexible tool ecosystem for tasks like code editing, file manipulation, model interactions, synthetic data generation, and more.
 
 
 ## Installation
@@ -114,12 +114,12 @@ providers:
 ```
 
 
-### Plugin Development
+### Tool Development
 
 Create custom transformations by decorating functions with `@llt`:
 
 ```python
-from plugins import llt
+from tools import llt
 from typing import List, Dict
 
 @llt
@@ -286,13 +286,13 @@ llt --model claude-sonnet \
    - Preserve intermediate states
    - Include validation between transformations
 
-## Plugin System
+## Tool System
 
-### Plugin Specification
-Plugins are defined using Python decorators and type hints for automatic integration.
+### Tool Specification
+Tools are defined using Python decorators and type hints for automatic integration.
 
 ```python
-from plugins import llt
+from tools import llt
 from typing import List, Dict, Optional, Union
 
 @llt
@@ -307,7 +307,7 @@ def pdf_extract(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]
         - pages: str = "all"     # Page range (e.g., "1-5,7,9-11")
         - tables: bool = False   # Extract tables as structured data
     """
-    # Plugin implementation
+    # Tool implementation
     return messages
 
 @llt
@@ -321,7 +321,7 @@ def code_metrics(messages: List[Dict], args: Dict) -> Dict[str, Union[int, float
         - threshold: int = 10    # Complexity threshold
         - format: str = "json"   # Output format (json/yaml)
     """
-    # Plugin implementation
+    # Tool implementation
     return {
         "complexity": 8,
         "maintainability": 85.5,
@@ -329,7 +329,7 @@ def code_metrics(messages: List[Dict], args: Dict) -> Dict[str, Union[int, float
     }
 ```
 
-### Plugin Usage in Workflows
+### Tool Usage in Workflows
 
 #### 1. PDF Processing Pipeline
 Demonstrates PDF extraction and analysis workflow.
@@ -341,7 +341,7 @@ Demonstrates PDF extraction and analysis workflow.
 # - Preserves document structure
 llt --model claude-sonnet \
     --file document.pdf \
-    --plugin pdf --ocr true --tables true \
+    --tool pdf --ocr true --tables true \
     --complete --temperature 0.7 \
     --write pdf/extracted.ll
 
@@ -367,7 +367,7 @@ Combines code metrics with refactoring suggestions.
 # - Generates quality report
 llt --model claude-sonnet \
     --file src/*.py \
-    --plugin metrics --threshold 8 --format json \
+    --tool metrics --threshold 8 --format json \
     --complete --temperature 0.7 \
     --write metrics/analysis.ll
 
@@ -383,14 +383,14 @@ llt --model claude-sonnet \
     --write metrics/improved.ll
 ```
 
-### Creating Custom Plugins
+### Creating Custom Tools
 
-1. **Basic Plugin Structure**
+1. **Basic Tool Structure**
 ```python
 @llt
-def custom_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
+def custom_tool(messages: List[Dict], args: Dict) -> List[Dict]:
     """
-    Description: Your plugin description
+    Description: Your tool description
     Type: transformer|analyzer|generator
     Default: false
     Flag: custom_name
@@ -402,31 +402,31 @@ def custom_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
     return messages
 ```
 
-2. **Plugin Types**
+2. **Tool Types**
 - `transformer`: Modifies message content
 - `analyzer`: Provides analysis without modification
 - `generator`: Creates new content or files
 
 3. **Integration Points**
 ```bash
-# Direct plugin usage
-llt --plugin custom_name --option1 value1
+# Direct tool usage
+llt --tool custom_name --option1 value1
 
-# Chained plugin execution
-llt --plugin "custom1,custom2" --custom1.opt1 val1 --custom2.opt2 val2
+# Chained tool execution
+llt --tool "custom1,custom2" --custom1.opt1 val1 --custom2.opt2 val2
 
-# Plugin with model completion
-llt --model claude-sonnet --plugin custom_name --complete
+# Tool with model completion
+llt --model claude-sonnet --tool custom_name --complete
 ```
 
-### Plugin Best Practices
+### Tool Best Practices
 
 1. **Input Validation**
 ```python
 @llt
-def validated_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
+def validated_tool(messages: List[Dict], args: Dict) -> List[Dict]:
     """
-    Description: Plugin with input validation
+    Description: Tool with input validation
     Type: transformer
     Flag: validated
     """
@@ -446,9 +446,9 @@ def validated_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
 2. **Error Handling**
 ```python
 @llt
-def robust_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
+def robust_tool(messages: List[Dict], args: Dict) -> List[Dict]:
     """
-    Description: Plugin with error handling
+    Description: Tool with error handling
     Type: transformer
     Flag: robust
     """
@@ -461,8 +461,8 @@ def robust_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
         return messages
         
     except Exception as e:
-        logging.error(f"Plugin error: {str(e)}")
-        raise PluginError(f"Processing failed: {str(e)}")
+        logging.error(f"Tool error: {str(e)}")
+        raise ToolError(f"Processing failed: {str(e)}")
         
     return result
 ```
@@ -470,9 +470,9 @@ def robust_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
 3. **Performance Optimization**
 ```python
 @llt
-def optimized_plugin(messages: List[Dict], args: Dict) -> List[Dict]:
+def optimized_tool(messages: List[Dict], args: Dict) -> List[Dict]:
     """
-    Description: Performance-optimized plugin
+    Description: Performance-optimized tool
     Type: transformer
     Flag: optimized
     Options:
