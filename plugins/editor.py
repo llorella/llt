@@ -1,4 +1,3 @@
-# plugins/editor.py
 import os
 import subprocess
 import pyperclip  # type: ignore
@@ -333,7 +332,7 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
     flag: file
     short: f
     """
-    if not args.get('file') and not args.get('non_interactive') and not args.get('auto'):
+    if not args.get('non_interactive') and not args.get('auto'):
         file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), root_dir=os.getcwd())
     else:
         file_path = args.get('file', None)
@@ -366,5 +365,4 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
             if ext.lower() in language_extension_map:
                 content = f"```{os.path.basename(file_path)}\n{content}\n```"
             messages.append({"role": args.get('role', 'user'), "content": content})
-
     return messages
