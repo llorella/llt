@@ -14,6 +14,9 @@ import time
 import json
 import argparse
 import traceback
+import uuid
+import datetime
+import hashlib
 from typing import List, Dict, Callable, Optional, TypeVar, Any, Tuple
 from dataclasses import dataclass
 from functools import reduce
@@ -37,6 +40,8 @@ CommandMap = Dict[str, Callable]
 T = TypeVar('T')
 R = TypeVar('R')
 
+MessagePlaceholder = Dict[str, Any]
+
 @dataclass(frozen=True)
 class AppState:
     """
@@ -53,6 +58,8 @@ class AppState:
 
     def with_messages(self, new_messages: Messages) -> 'AppState':
         """Create new state with updated messages."""
+        new_context = dict(self.context)
+        new_context.pop("last_log_id", None)
         return AppState(new_messages, self.context, self.command_queue)
 
     def with_context(self, new_context: Context) -> 'AppState':
@@ -104,9 +111,194 @@ class FunctionComposition:
                 return f(*args, **kwargs)
             except Exception as e:
                 llt_logger.log_error(str(e), {"traceback": traceback.format_exc()})
-                print(f"Error: {e}\n{traceback.format_exc()}")
+                print(f"{Colors.RED}Error: {e}\n{traceback.format_exc()}{Colors.RESET}")
                 return default
         return wrapper
+
+def calculate_context_delta(old_context: Context, new_context: Context) -> Dict[str, Any]:
+    """Calculate the difference between two context dictionaries."""
+    delta = {}
+    old_keys = set(old_context.keys())
+    new_keys = set(new_context.keys())
+
+    # Check for changed and added keys
+    for key in new_keys:
+        # Ignore internal logging state
+        if key in ["session_id", "last_log_id"]:
+            continue
+        if key not in old_keys or old_context[key] != new_context[key]:
+            delta[key] = new_context[key]
+
+    # Check for removed keys
+    for key in old_keys:
+        # Ignore internal logging state
+        if key in ["session_id", "last_log_id"]:
+            continue
+        if key not in new_keys:
+            delta[key] = None # Indicate removal
+    return delta
+
+def calculate_messages_delta(old_messages: Messages, new_messages: Messages) -> Tuple[List[MessagePlaceholder], List[int]]:
+    """
+    Calculate added message placeholders. Assumes messages are primarily appended.
+    Handles the specific case where the last message might be removed (tool command).
+    Returns (added_message_placeholders, removed_indices).
+    """
+    old_len = len(old_messages)
+    new_len = len(new_messages)
+
+    def create_placeholder(message: Message, index: int) -> MessagePlaceholder:
+        content = message.get("content", "")
+        # Ensure content is string if not already (for hashing)
+        content_str = json.dumps(content) if not isinstance(content, str) else content
+        content_bytes = content_str.encode('utf-8')
+        return {
+            "type": "message_ref",
+            "role": message.get("role", "unknown"),
+            "content_length": len(content_bytes),
+            "content_sha256": hashlib.sha256(content_bytes).hexdigest(),
+            "index_in_new_state": index
+        }
+
+    # If no old messages, all new messages are added
+    if not old_messages:
+        placeholders = [create_placeholder(msg, i) for i, msg in enumerate(new_messages)]
+        return placeholders, []
+
+    # Simple append case
+    if new_len > old_len and new_messages[:old_len] == old_messages:
+        added_messages = new_messages[old_len:]
+        placeholders = [create_placeholder(msg, i + old_len) for i, msg in enumerate(added_messages)]
+        return placeholders, []
+
+    # Case where last message might have been removed (e.g., tool command)
+    if new_len == old_len - 1 and new_messages == old_messages[:-1]:
+        return [], [old_len - 1] # Indicate removal of the last index of old_messages
+
+    # If it's neither simple append nor last item removal, log all new messages as added
+    # This is a fallback and might not perfectly capture complex modifications.
+    # A more sophisticated diff algorithm could be used here if needed.
+    # See GEMINI.md: Delta Calculation Complexity
+    llt_logger.log_warning("Messages delta calculation fallback used.", {"old_len": old_len, "new_len": new_len})
+    placeholders = [create_placeholder(msg, i + old_len) for i, msg in enumerate(new_messages[old_len:])]
+    return placeholders, [] # Best guess: treat as append
+
+def get_plugin_source(cmd_map: CommandMap, cmd_name: str) -> Optional[str]:
+    """Attempt to find the source module of a command."""
+    if cmd_name in cmd_map:
+        try:
+            return cmd_map[cmd_name].__module__
+        except AttributeError:
+            return "unknown_source"
+    return None
+
+def get_resource_references(command: ScheduledCommand, old_state: AppState, new_state: AppState) -> Dict[str, Any]:
+    """Determine relevant resource references based on the command."""
+    references = {}
+    cmd_name = command.name
+    cmd_value = command.value
+
+    # File/Path related commands
+    if cmd_name in ["load", "write", "attach", "file", "include_project_context"]:
+        if cmd_value:
+            references["referenced_path"] = cmd_value
+        elif cmd_name == "load" and new_state.context.get("load") != old_state.context.get("load"):
+             # Handle cases where load might update context directly
+             references["referenced_path"] = new_state.context.get("load")
+        # Future: Add file hash: references["path_hash_sha256"] = calculate_file_hash(path)
+
+    # Model / Generation related commands
+    elif cmd_name in ["complete", "gen", "llm", "generate"]: # Assuming aliases
+        references["model_used"] = old_state.context.get("model")
+        references["temperature_used"] = old_state.context.get("temperature")
+        references["max_tokens_setting"] = old_state.context.get("max_tokens")
+        references["top_p_setting"] = old_state.context.get("top_p")
+    elif cmd_name == "change_model":
+        if cmd_value:
+            references["model_changed_to"] = cmd_value
+
+    # External Interaction Commands
+    elif cmd_name == "url_fetch":
+        if cmd_value:
+            references["fetched_url"] = cmd_value
+    elif cmd_name == "email":
+        if cmd_value:
+            references["email_details"] = cmd_value # Could be recipient, subject etc.
+    elif cmd_name in ["git_ls_files", "git_status", "git_diff"]:
+        references["git_operation"] = cmd_name
+        references["project_dir"] = old_state.context.get("project_dir") # Assuming project_dir context exists
+
+    # Execution / Application Commands
+    elif cmd_name in ["execute", "apply"]:
+        references["action_type"] = cmd_name
+        references["target_index"] = command.index
+        # Future: Could add language/code snippet hash if feasible
+
+    # Context Modification
+    elif cmd_name == "modify_args":
+        references["context_modifier"] = cmd_name
+        # Changes are primarily captured in context_delta
+
+    # Add others based on llt_tools.json as needed (e.g., screenshot, whisper)
+
+    return references
+
+def log_command_execution(
+    old_state: AppState,
+    new_state: AppState,
+    command: ScheduledCommand,
+    cmd_map: CommandMap
+) -> Optional[str]:
+    """Logs the execution of a command and the resulting state change."""
+    session_id = old_state.context.get("session_id")
+    cmd_dir = old_state.context.get("cmd_dir")
+    parent_log_id = old_state.context.get("last_log_id") # Get parent ID from old state
+
+    if not session_id or not cmd_dir:
+        llt_logger.log_warning("Cannot log command: session_id or cmd_dir missing from context.")
+        return parent_log_id if isinstance(parent_log_id, str) else None # Return the old parent ID (str or None)
+
+    log_file_path = os.path.join(cmd_dir, f"session_{session_id}.log.jsonl")
+    log_id = str(uuid.uuid4())
+    timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
+
+    context_delta = calculate_context_delta(old_state.context, new_state.context)
+    messages_added, messages_removed_indices = calculate_messages_delta(old_state.messages, new_state.messages)
+
+    # Get resource references based on the command
+    resource_references = get_resource_references(command, old_state, new_state)
+
+    log_entry = {
+        "log_id": log_id,
+        "parent_id": parent_log_id,
+        "timestamp": timestamp,
+        "command": {
+            "name": command.name,
+            "value": command.value,
+            "index": command.index,
+            "plugin_source": get_plugin_source(cmd_map, command.name)
+        },
+        "state_delta": {
+            "context_changed": context_delta,
+            "messages_added": messages_added,
+            "messages_removed_indices": messages_removed_indices # Placeholder for future use
+        },
+        "resource_references": resource_references,
+        "output_summary": { # Basic summary, could be enhanced by plugins returning status
+             "status": "success", # Assume success if we got here
+             "new_message_count": len(messages_added)
+         }
+    }
+
+    try:
+        with open(log_file_path, 'a') as f:
+            json.dump(log_entry, f)
+            f.write('\n')
+        return log_id # Return the new log_id to be stored
+    except IOError as e:
+        llt_logger.log_error(f"Failed to write command log: {e}", {"log_file": log_file_path})
+        print(f"{Colors.RED}Error logging command to {log_file_path}: {e}{Colors.RESET}")
+        return parent_log_id if isinstance(parent_log_id, str) else None # Return the old ID on failure
 
 def create_parser() -> argparse.ArgumentParser:
     """
@@ -210,19 +402,40 @@ def process_command(
                     new_messages = new_messages[:-1]
             
             # Create new state with updates from plugin
-            return AppState.from_plugin_result(new_messages, context, command_queue)
+            intermediate_state = AppState.from_plugin_result(new_messages, context, command_queue)
+
+            # --- Log Command Execution ---
+            # Pass the original 'state' as old_state, and the result as new_state
+            last_log_id = log_command_execution(state, intermediate_state, cmd, cmd_map)
+            # Update context with the latest log ID for the next step's parent_id
+            final_context = dict(intermediate_state.context)
+            final_context["last_log_id"] = last_log_id
+            return intermediate_state.with_context(final_context)
             
         except Exception as e:
             llt_logger.log_error(str(e), {"traceback": traceback.format_exc()})
-            print(f"Command failed: {e}")
+            print(f"{Colors.RED}Command failed: {e}{Colors.RESET}")
             return state
     else:
         # Handle as user message
+        full_content = cmd.name
+        if cmd.value is not None:
+             # Combine name and value if value exists, assuming value holds the rest of the input
+             full_content += f" {cmd.value}"
         new_messages = [*state.messages, {
             'role': state.context['role'],
-            'content': cmd.name
+            'content': full_content # Use combined content
         }]
-        return state.with_messages(new_messages)
+        # --- Log User Input as a Command ---
+        # Treat user input as a pseudo-command for logging continuity
+        user_input_command = ScheduledCommand(name="<user_input>", index=-1, value=full_content)
+        intermediate_state = state.with_messages(new_messages)
+
+        last_log_id = log_command_execution(state, intermediate_state, user_input_command, cmd_map)
+        # Update context with the latest log ID
+        final_context = dict(intermediate_state.context)
+        final_context["last_log_id"] = last_log_id
+        return intermediate_state.with_context(final_context)
 
 def get_next_command(
     state: AppState,
@@ -255,7 +468,7 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
         except KeyboardInterrupt:
             if not state.context.get('non_interactive'):
                 print("\nDouble interrupt - exiting...")
-            sys.exit(0)
+            sys.exit(1) # Exit with error code on interrupt
 
         if state.context.get('auto'):
             new_context = dict(state.context)
@@ -280,7 +493,7 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
             return process_interrupt(state)
         except Exception as e:
             llt_logger.log_error(str(e), {"traceback": traceback.format_exc()})
-            print(f"Error: {e}\n{traceback.format_exc()}")
+            print(f"{Colors.RED}Error: {e}\n{traceback.format_exc()}{Colors.RESET}")
             return state
 
     def loop(state: AppState) -> None:
@@ -304,11 +517,16 @@ def main() -> None:
     args = parser.parse_args()
     
     # Initialize directories
-    initialize_environment([args.ll_dir, args.exec_dir])
+    initialize_environment([args.ll_dir, args.exec_dir, args.cmd_dir])
+    
+    # Initialize session-specific context
+    context_dict = vars(args)
+    context_dict["session_id"] = str(uuid.uuid4())
+    context_dict["last_log_id"] = None # Initialize parent ID for the first log entry
     
     # Create initial state
     initial_state = AppState(
-        messages=[],
+        messages=[], # Start with empty messages
         context=vars(args),
         command_queue=schedule_startup_commands(args)
     )
