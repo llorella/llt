@@ -153,7 +153,7 @@ def load_tools(tool_dir: str) -> None:
                 llt_logger.log_error(f"Could not load spec for tool: {module_name}", {"path": file_path})
 
     # Generate the tool spec after loading all tools
-    generate_tool_spec("llt_tools.json")
+    generate_tool_spec(os.path.join(os.environ.get("LLT_PATH", "~/.llt"), "tool_spec.json"))
 
 
 def help(messages, context, index):
@@ -289,7 +289,7 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
 
 def generate_tool_spec(output_path: str):
     """Generates a tool specification JSON file based on registered tools."""
-    tool_spec = {
+    tool_spec: Dict[str, Any] = {
         "name": "llt",
         "description": "Terminal tool for managing language model conversations with tool commands",
         "index": {

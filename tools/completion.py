@@ -498,7 +498,7 @@ Examples:
 """
     
     try:
-        llt_logger.log_info("Requesting tool suggestion from Anthropic.", {"model": "claude-3-opus-20240229"}) # Or your preferred model
+        llt_logger.log_info("Requesting tool suggestion from Anthropic.", {"model": "claude-3-7-sonnet-021925"}) # Or your preferred model
         response = anthropic_client.messages.create(
             model="claude-3-7-sonnet-20250219", # Replace with your desired model
             max_tokens=1024,
@@ -513,7 +513,7 @@ Examples:
         suggested_tool_use = None
         if response.content:
             # Track counts of each block type
-            block_type_counts = {}
+            block_type_counts: Dict[str, int] = {}
             
             for block in response.content:
                 block_type = block.type

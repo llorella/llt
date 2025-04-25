@@ -590,44 +590,41 @@ def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
     # Simple fuzzy filename pattern (e.g., path/to/file.py)
     fuzzy_filename_pattern = re.compile(r'\b(?:[a-zA-Z0-9._-]+/)*[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}\b')
 
-
     for i, match in enumerate(code_pattern.finditer(markdown)):
-        first_line_token = match.group(1) or "" # Language or potential filename
+        first_line_token = match.group(1) or ""  # Language or potential filename
         content = match.group(2).strip()
-        language = "text" # Default
+        language = "text"  # Default
         filename = None
 
-        # Try to determine language and filename from the first line token
-        if '.' in first_line_token and '/' not in first_line_token: # Likely a filename
+        # Try to determine filename directly from the first line token
+        if '.' in first_line_token:  # Likely a filename
             filename = first_line_token
             _, ext = os.path.splitext(filename)
             ext = ext.lstrip('.')
             # Map extension to language
             for lang_key, lang_ext in language_extension_map.items():
-                 if lang_ext.lstrip('.') == ext:
-                     language = lang_key
-                     break
-            if language == "text": # If mapping failed, use extension itself
-                 language = ext if ext else "text"
-        elif first_line_token: # Likely a language identifier
+                if lang_ext.lstrip('.') == ext:
+                    language = lang_key
+                    break
+            if language == "text":  # If mapping failed, use extension itself
+                language = ext if ext else "text"
+        elif first_line_token:  # Likely a language identifier
             language = first_line_token.lower()
 
         # If filename wasn't on the first line, try searching comments
         if not filename:
-            comment_match = filename_comment_pattern.search(content.split('\n', 5)[0]) # Check first few lines
+            comment_match = filename_comment_pattern.search(content.split('\n', 5)[0])  # Check first few lines
             if comment_match:
-                 filename = comment_match.group(1)
+                filename = comment_match.group(1)
             else:
-                 # Try fuzzy matching if no explicit comment found
-                 fuzzy_match = fuzzy_filename_pattern.search(content.split('\n', 5)[0])
-                 if fuzzy_match:
-                      # Be cautious with fuzzy matches, might be URLs or other strings
-                      potential_fn = fuzzy_match.group(0)
-                      # Basic sanity check (avoid overly long strings, etc.)
-                      if len(potential_fn) < 100 and potential_fn.count('.') < 5:
-                           # filename = potential_fn # Decided against auto-assigning fuzzy matches for now
-                           pass # Let user specify filename if needed
-
+                # Try fuzzy matching if no explicit comment found
+                fuzzy_match = fuzzy_filename_pattern.search(content.split('\n', 5)[0])
+                if fuzzy_match:
+                    # Be cautious with fuzzy matches, might be URLs or other strings
+                    potential_fn = fuzzy_match.group(0)
+                    # Basic sanity check (avoid overly long strings, etc.)
+                    if len(potential_fn) < 100 and potential_fn.count('.') < 5:
+                        filename = potential_fn
 
         # Fallback: Use detected language if identifier wasn't valid language
         if language not in language_extension_map and language not in language_comment_map:
@@ -639,7 +636,7 @@ def parse_markdown_for_codeblocks(markdown: str) -> List[Dict]:
             "index": i,
             "language": language,
             "content": content,
-            "filename": filename # May be None
+            "filename": filename  # May be None
         })
 
     return blocks
