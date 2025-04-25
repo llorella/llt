@@ -80,11 +80,12 @@ def send_request(
     data = {
         "messages": messages,
         "model": args.get('model'),
-        "max_completion_tokens": args.get('max_tokens'),
         "temperature": args.get('temperature'),
-        #"max_tokens": args.get('max_tokens'),
         "stream": True,
     }
+    
+    if args.get('max_tokens'):
+        data["max_completion_tokens"] = args['max_tokens']
 
     full_response_content = ""
     response_buffer = []

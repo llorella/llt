@@ -327,3 +327,47 @@ def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
 
     return messages
 
+
+@llt
+def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+    """
+    Description: Include file content (including images) into the conversation
+    Type: string
+    Default: None
+    flag: file
+    short: f
+    """
+    if not args.get('non_interactive') and not args.get('auto'):
+        file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), root_dir=os.getcwd())
+    else:
+        file_path = args.get('file', None)
+
+    if not os.path.exists(file_path):
+        Colors.print_colored(f"Error: File not found at {file_path}", Colors.RED)
+        return messages
+
+    _, ext = os.path.splitext(file_path)
+    if ext.lower() in [".png", ".jpeg", ".jpg", ".gif", ".webp"]:
+        prompt = (args.get('prompt') if args.get('non_interactive') else input_handler.get_input("Enter prompt")) or args.get('prompt')
+        try:
+            encoded_image = file_handler.encode_image_to_base64(file_path)
+            if not encoded_image:
+                return messages
+        except Exception as e:
+            Colors.print_colored(f"Failed to encode image: {e}", Colors.RED)
+            return messages
+        
+        messages.append({
+            "role": "user", 
+            "content": [
+                {"type": "image_url", "image_url": "file://" + file_path},
+                {"type": "text", "text": prompt},
+            ],
+        })
+    else:
+        content = file_handler.read(file_path)
+        if content is not None:
+            if ext.lower() in language_extension_map:
+                content = f"```{os.path.basename(file_path)}\n{content}\n```"
+            messages.append({"role": args.get('role', 'user'), "content": content})
+    return messages

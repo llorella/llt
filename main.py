@@ -314,7 +314,7 @@ def create_parser() -> argparse.ArgumentParser:
     model_group.add_argument('--role', '-r', type=str, help="Specify role (user, system, etc.)", default="user")
     model_group.add_argument('--model', '-m', type=str, help="Which LLM model to use", default="deepseek-chat")
     model_group.add_argument('--temperature', '-t', type=float, help="Sampling temperature", default=0.9)
-    model_group.add_argument('--max_tokens', type=int, help="Max tokens to generate", default=8192)
+    model_group.add_argument('--max_tokens', type=int, help="Max tokens to generate", default=0)
     model_group.add_argument('--logprobs', type=int, help="Include logprobs in completion", default=0)
     model_group.add_argument('--top_p', type=float, help="Top-p sampling", default=1.0)
     
