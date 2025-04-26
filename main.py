@@ -17,7 +17,8 @@ import traceback
 import uuid
 import datetime
 import hashlib
-from typing import List, Dict, Callable, Optional, TypeVar, Any, Tuple
+import textwrap
+from typing import List, Dict, Callable, Optional, TypeVar, Any, Tuple, Union, cast
 from dataclasses import dataclass
 from functools import reduce
 from collections import deque
@@ -29,7 +30,10 @@ from tools import (
     add_tool_arguments,
     init_cmd_map,
     schedule_startup_commands,
-    ScheduledCommand
+    ScheduledCommand,
+    pack_namespaced_args,
+    registry_to_json_schema,
+    get_plugin_args
 )
 
 # Type aliases for improved readability and type safety
@@ -335,6 +339,8 @@ def create_parser() -> argparse.ArgumentParser:
     mode_group.add_argument('--auto', action='store_true', help="Enable auto mode")
     mode_group.add_argument('--non_interactive', '-n', action='store_true', 
                            help="Run in non-interactive mode")
+    mode_group.add_argument('--use_tool', action='store_true',
+                           help="Run in use_tool mode (uses LLM to execute tools)")
     
     return parser
 
@@ -374,6 +380,7 @@ def process_command(
             
             # If the command has a specific value, temporarily override the context
             original_value = None
+            
             if cmd.value is not None and cmd.name in context:
                 # Save original value
                 original_value = context.get(cmd.name)
@@ -394,7 +401,7 @@ def process_command(
                 command_queue = state.command_queue.copy()
             
             # Handle LLT tool messages for backward compatibility
-            if new_messages and isinstance(new_messages[-1], dict) and new_messages[-1].get("role") == "tool":
+            """ if new_messages and isinstance(new_messages[-1], dict) and new_messages[-1].get("role") == "tool":
                 tool_content = new_messages[-1].get("content", "")
                 if not state.context.get("non_interactive"):
                     if input("Add this LLT command to queue? (y/N): ").lower() == 'y':
@@ -404,7 +411,7 @@ def process_command(
                 else:
                     cmd_name, value, index = parse_interactive_input(tool_content)
                     command_queue.append(ScheduledCommand(cmd_name, index if index is not None else -1, value=value))
-                    new_messages = new_messages[:-1]
+                    new_messages = new_messages[:-1] """
             
             # Restore original value if needed
             if original_value is not None:
@@ -424,6 +431,7 @@ def process_command(
 
             # --- Log Command Execution ---
             last_log_id = log_command_execution(state, intermediate_state, cmd, cmd_map)
+            # this is where we can statefully log the command execution as a function of current state
             # Update context with the latest log ID for the next step's parent_id
             final_context = dict(intermediate_state.context)
             final_context["last_log_id"] = last_log_id
@@ -462,19 +470,36 @@ def get_next_command(
     Determine the next command to execute.
     Handles command queue, non-interactive mode, and transitions
     from redirected stdin to interactive TTY input.
+    Adds logging for command retrieval steps.
     """
     if state.command_queue:
-        return state.command_queue.popleft()
+        llt_logger.log_info("Dequeuing command from command_queue.", {
+            "queue_length": len(state.command_queue),
+            "queue": [str(cmd) for cmd in state.command_queue]
+        })
+        popped_command = state.command_queue.popleft()
+        print(f"\nDequeued command: {popped_command.name}")
+        print(cmd_map[popped_command.name])
+        return popped_command
     elif state.context.get('non_interactive'):
+        llt_logger.log_info("Non-interactive mode: no more commands to process.")
         return None
-    
+
+    llt_logger.log_info("Awaiting interactive user input for next command.", {
+        "available_commands": list(cmd_map.keys())
+    })
     cmd_name, value, index = llt_interactive_input(list(cmd_map.keys()))
     internal_index = index if index is not None else -1
+    llt_logger.log_info("Received interactive command.", {
+        "cmd_name": cmd_name,
+        "value": value,
+        "index": internal_index
+    })
     return ScheduledCommand(cmd_name, internal_index, value=value)
 
 def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
     """
-    Main application loop using immutable state transitions.
+    Main llt loop using immutable state transitions.
     """
     def process_interrupt(state: AppState) -> AppState:
         """Handle keyboard interrupts."""
@@ -536,15 +561,21 @@ def main() -> None:
     # Initialize directories
     initialize_environment([args.ll_dir, args.exec_dir, args.cmd_dir])
     
-    # Initialize session-specific context
-    context_dict = vars(args)
+    # Convert flat namespace to nested context
+    context_dict = pack_namespaced_args(args)
+    
+    # Add session-specific context
     context_dict["session_id"] = str(uuid.uuid4())
     context_dict["last_log_id"] = None # Initialize parent ID for the first log entry
     
+    # If use_tool flag is set, make sure auto is enabled
+    if args.use_tool:
+        context_dict["auto"] = True
+
     # Create initial state
     initial_state = AppState(
         messages=[], # Start with empty messages
-        context=vars(args),
+        context=context_dict,
         command_queue=schedule_startup_commands(args)
     )
     
@@ -556,7 +587,8 @@ def main() -> None:
         Colors.print_header()
         print(create_greeting(initial_state.context))
     
-    # Run application
+        
+    # Run application in REPL mode (use_tool functionality controlled by auto flag)
     run_llt(initial_state, cmd_map)
 
 if __name__ == "__main__":

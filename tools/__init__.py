@@ -2,7 +2,7 @@
 
 import os
 import importlib.util
-from typing import Callable, Dict, Any, Optional, List, Tuple, TypeVar, cast, Union
+from typing import Callable, Dict, Any, Optional, List, Tuple, TypeVar, cast, Union, Set
 from logger import llt_logger
 import argparse
 import re
@@ -11,11 +11,22 @@ from dataclasses import dataclass
 import sys
 import json
 from datetime import datetime
+from functools import wraps
 
 _tools_registry: Dict[str, Dict[str, Any]] = {}
 
+# Type mapping from tool spec to JSON schema
+TYPE_MAP = {
+    "int": "integer",
+    "float": "number",
+    "str": "string", 
+    "string": "string",
+    "bool": "boolean",
+    "boolean": "boolean",
+}
+
 # Export symbols for tool authors
-__all__ = ['llt', 'ScheduledCommand', 'ToolResult']
+__all__ = ['llt', 'ScheduledCommand', 'ToolResult', 'get_plugin_args']
 
 # Type aliases for tool return values
 T = TypeVar('T')
@@ -23,63 +34,122 @@ Messages = List[Dict[str, Any]]
 CommandsToQueue = List['ScheduledCommand']
 ToolResult = Union[Messages, Tuple[Messages, CommandsToQueue]]
 
-def llt(fn: Callable) -> Callable:
+def llt(needs_index: bool = False) -> Callable:
     """
-    Decorator that registers a tool by parsing its docstring.
-
-    Each docstring should contain lines in the format:
-
-        Description: ...
-        Type: ...
-        Default: ...
-        flag: ...
-        short: ...
-
-    Example:
-        @llt
-        def example(messages, context, index=-1):
-            \"\"\"
-            Description: Example tool
-            Type: bool
-            Default: false
-            flag: example
-            short: e
-            \"\"\"
-            ...
-
-    We'll store these in _tools_registry for later argument parsing and command mapping.
+    Enhanced decorator that registers a tool by parsing its docstring.
+    
+    Args:
+        needs_index: Whether this tool needs the message index parameter
     """
-    doc = fn.__doc__ or ""
+    def decorator(fn: Callable) -> Callable:
+        """
+        Enhanced decorator that registers a tool by parsing its docstring.
 
-    desc_match = re.search(r"Description:\s*(.*)", doc)
-    type_match = re.search(r"Type:\s*(.*)", doc)
-    default_match = re.search(r"Default:\s*(.*)", doc)
-    flag_match = re.search(r"flag:\s*(.*)", doc)
-    short_match = re.search(r"short:\s*(.*)", doc)
+        Each docstring should contain lines in the format:
 
-    description = desc_match.group(1).strip() if desc_match else fn.__name__
-    arg_type = type_match.group(1).strip() if type_match else None
-    default = default_match.group(1).strip() if default_match else None
-    flag = flag_match.group(1).strip() if flag_match else fn.__name__
-    short = short_match.group(1).strip() if short_match else None
+            Description: ...
+            Type: ...
+            Default: ...
+            flag: ...
+            short: ...
 
-    _tools_registry[fn.__name__] = {
-        'function': fn,
-        'description': description,
-        'type': arg_type,
-        'default': default if default != "None" else None,
-        'flag': flag,
-        'short': short
-    }
-    return fn
+        And optional sub-flags:
+            param: <name> <type> <default>
+
+        Example:
+            @llt(needs_index=True)
+            def example(messages, context, index=-1):
+                \"\"\"
+                Description: Example tool
+                Type: bool
+                Default: false
+                flag: example
+                short: e
+                param: url string "https://default.com"
+                param: timeout int 30
+                \"\"\"
+                ...
+
+        We'll store these in _tools_registry for later argument parsing and command mapping.
+        """
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            return fn(*args, **kwargs)
+            
+        doc = fn.__doc__ or ""
+
+        desc_match = re.search(r"Description:\s*(.*)", doc)
+        type_match = re.search(r"Type:\s*(.*)", doc)
+        default_match = re.search(r"Default:\s*(.*)", doc)
+        flag_match = re.search(r"flag:\s*(.*)", doc)
+        short_match = re.search(r"short:\s*(.*)", doc)
+
+        description = desc_match.group(1).strip() if desc_match else fn.__name__
+        arg_type = type_match.group(1).strip() if type_match else None
+        default = default_match.group(1).strip() if default_match else None
+        flag = flag_match.group(1).strip() if flag_match else fn.__name__
+        short = short_match.group(1).strip() if short_match else None
+        
+        # Parse sub-flags (parameters)
+        param_pattern = re.compile(r"param:\s*(\w+)\s+(\w+)(?:\s+(.*))?")
+        subflags = {}
+        
+        for line in doc.splitlines():
+            param_match = param_pattern.search(line.strip())
+            if param_match:
+                param_name = param_match.group(1)
+                param_type = param_match.group(2)
+                # Handle quoted default values
+                param_default = param_match.group(3)
+                if param_default:
+                    param_default = param_default.strip()
+                    # Remove quotes from string defaults
+                    if (param_default.startswith('"') and param_default.endswith('"')) or \
+                       (param_default.startswith("'") and param_default.endswith("'")):
+                        param_default = param_default[1:-1]
+                    # Convert to proper Python type if possible
+                    elif param_type in ('int', 'float'):
+                        try:
+                            param_default = int(param_default) if param_type == 'int' else float(param_default)
+                        except ValueError:
+                            llt_logger.log_warning(f"Invalid {param_type} default for {param_name}: {param_default}")
+                    elif param_type in ('bool', 'boolean'):
+                        param_default = param_default.lower() == 'true'
+                
+                subflags[param_name] = {
+                    'type': param_type,
+                    'default': param_default
+                }
+
+        tool_registry_entry = {
+            'function': fn,
+            'description': description,
+            'type': arg_type,
+            'default': default if default != "None" else None,
+            'flag': flag,
+            'short': short,
+            'subflags': subflags,
+            'needs_index': needs_index
+        }
+        
+        _tools_registry[fn.__name__] = tool_registry_entry
+        return wrapper
+    
+    # Handle direct usage like @llt without parentheses
+    if callable(needs_index):
+        fn, needs_index = needs_index, False
+        return decorator(fn)
+    
+    return decorator
 
 
 def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
     """
     Create argparse flags from the collected tool registry.
+    Now handles both main flags and subflags.
     """
-    used_flags = set()
-    used_shorts = set()
+    used_flags: Set[str] = set()
+    used_shorts: Set[str] = set()
 
     for tool_name, info in _tools_registry.items():
         flag_str = info['flag']
@@ -99,9 +169,10 @@ def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
             if short_str in used_shorts:
                 llt_logger.log_info(f"Duplicate short flag '-{short_str}' in {tool_name}", {"tool": tool_name})
             else:
-                cli_flags.append(f"--{short_str}")
+                cli_flags.append(f"-{short_str}")
             used_shorts.add(short_str)
 
+        # Add main flag for the tool
         if arg_type in ("bool", "boolean"):
             parser.add_argument(
                 *cli_flags,
@@ -128,6 +199,168 @@ def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
                 default=default_val,
                 help=description
             )
+            
+        # Add sub-flags for this tool
+        subflags = info.get('subflags', {})
+        for subflag_name, subflag_info in subflags.items():
+            subflag_type = subflag_info['type']
+            subflag_default = subflag_info['default']
+            
+            # Create both --flag-sub and --flag.sub formats
+            subflag_hyphen = f"--{flag_str}-{subflag_name}"
+            subflag_dot = f"--{flag_str}.{subflag_name}"
+            
+            # Create destination name for argparse (will be used by pack_namespaced_args)
+            dest = f"{flag_str}_{subflag_name}"
+            
+            subflag_help = f"Parameter '{subflag_name}' for {flag_str}"
+            
+            if subflag_type in ("bool", "boolean"):
+                parser.add_argument(
+                    subflag_hyphen, subflag_dot,
+                    dest=dest,
+                    action='store_true',
+                    default=(str(subflag_default).lower() == "true") if subflag_default is not None else False,
+                    help=subflag_help
+                )
+            elif subflag_type in ("int", "float"):
+                py_type = int if subflag_type == "int" else float
+                try:
+                    default_conv = py_type(subflag_default) if subflag_default is not None else None
+                except (ValueError, TypeError):
+                    default_conv = None
+                parser.add_argument(
+                    subflag_hyphen, subflag_dot,
+                    dest=dest,
+                    type=py_type,
+                    default=default_conv,
+                    help=subflag_help
+                )
+            else:
+                parser.add_argument(
+                    subflag_hyphen, subflag_dot,
+                    dest=dest,
+                    type=str,
+                    default=subflag_default,
+                    help=subflag_help
+                )
+
+
+def build_anthropic_catalogue() -> List[Dict[str, Any]]:
+    """
+    Produce the list of {name, description, input_schema} dictionaries that
+    Anthropic's client expects.  We simply reuse registry_to_json_schema().
+    """
+    return registry_to_json_schema()
+
+
+def make_scheduled_from_tool_use(
+    block: "anthropic.messages.ToolUseBlock",
+) -> "ScheduledCommand":
+    """
+    Convert a Claude `tool_use` block into an LLT ScheduledCommand.
+    """
+    
+    """
+    Example: 
+    "block": "ToolUseBlock(id='toolu_01HyaVAFMSuLys6iYPKL7jMu', input={'input': 'main.py'}, name='file', type='tool_use')"
+    
+    returns 
+    
+    ScheduledCommand(name='file', index=-1, value='main.py', args={})
+    
+    """
+    inp = block.input or {}
+    idx = inp.pop("index", -1) if isinstance(inp, dict) else -1
+    value = inp.pop("input", None) if isinstance(inp, dict) else None
+    print(f"Block name: {block.name}, index: {idx}, value: {value}, args: {inp}")
+    print(_tools_registry)
+    print(_tools_registry.get(block.name))
+    return ScheduledCommand(name=block.name, index=idx, value=value, args=inp)
+
+
+def pack_namespaced_args(args: argparse.Namespace) -> Dict[str, Any]:
+    """
+    Convert flat argparse namespace to nested dictionary with namespaces.
+    
+    Example:
+        {
+          "model": "claude-3-sonnet",
+          "execute": {"language":"bash","timeout":30},
+          "complete": True
+        }
+    """
+    args_dict = vars(args)
+    result = {}
+    
+    # Track which keys have been processed
+    processed_keys = set()
+    
+    # Find all tool flags
+    for tool_name, info in _tools_registry.items():
+        flag = info['flag']
+        if flag in args_dict:
+            # Main flag exists
+            value = args_dict[flag]
+            
+            # For boolean flags that are False or string flags that are None, skip
+            if (info['type'] in ('bool', 'boolean') and not value) or value is None:
+                processed_keys.add(flag)
+                continue
+                
+            # Process subflags if they exist
+            subflags = info.get('subflags', {})
+            if subflags:
+                # If this tool has subflags, create a nested dict
+                tool_dict = {}
+                
+                # Add subflags to the tool dict if they exist in args
+                for subflag, subflag_info in subflags.items():
+                    arg_key = f"{flag}_{subflag}"
+                    if arg_key in args_dict:
+                        subflag_value = args_dict[arg_key]
+                        # Only include non-default values
+                        default_value = subflag_info.get('default')
+                        if subflag_value != default_value:
+                            tool_dict[subflag] = subflag_value
+                        processed_keys.add(arg_key)
+                        
+                # Handle main flag value (only for non-boolean types)
+                if info['type'] not in ('bool', 'boolean'):
+                    # Use the value directly as an input parameter
+                    tool_dict['input'] = value
+                
+                # Only add the tool to the result if it has actual values
+                if tool_dict or info['type'] in ('bool', 'boolean'):
+                    result[flag] = tool_dict if tool_dict else True
+            else:
+                # No subflags, just use the value directly
+                result[flag] = value
+                
+            processed_keys.add(flag)
+    
+    # Add any unprocessed args as top-level entries
+    for key, value in args_dict.items():
+        if key not in processed_keys:
+            result[key] = value
+            
+    return result
+
+def get_plugin_args(context: Dict[str, Any], flag: str) -> Dict[str, Any]:
+    """
+    Helper function to get the arguments for a specific plugin.
+    
+    Args:
+        context: The context dictionary
+        flag: The flag (name) of the plugin
+        
+    Returns:
+        Dict containing the plugin's arguments
+    """
+    result = context.get(flag, {})
+    if not isinstance(result, dict):
+        result = {'enabled': result}
+    return result
 
 def load_tools(tool_dir: str) -> None:
     """
@@ -287,37 +520,112 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         f.write("\n")
     return command_queue
 
-def generate_tool_spec(output_path: str):
-    """Generates a tool specification JSON file based on registered tools."""
-    tool_spec: Dict[str, Any] = {
-        "name": "llt",
-        "description": "Terminal tool for managing language model conversations with tool commands",
-        "index": {
-            "description": "Message index to operate on (-1 for last message)",
-            "type": "integer",
-            "default": -1
-        },
-        "functions": {}
-    }
-
+def registry_to_json_schema() -> List[Dict[str, Any]]:
+    """
+    Convert the tool registry to a JSON schema suitable for Anthropic/OpenAI.
+    
+    Returns:
+        List of tool specifications compatible with the API
+    """
+    tools = []
+    
     for _, info in _tools_registry.items():
         flag = info.get('flag')
         description = info.get('description')
-        arg_type = info.get('type')  # Get the type
-        default_val = info.get('default') # Get the default
-
-        # Skip tools without a flag (like the internal help/quit) or basic description
+        needs_index = info.get('needs_index', False)
+        
+        # Skip tools without a flag or description
         if not flag or not description:
             continue
             
-        # Add function description and other relevant fields
-        function_spec = {"description": description}
-        if arg_type:
-            function_spec["type"] = arg_type
-        if default_val is not None: # Explicitly check for None
-            function_spec["default"] = default_val
+        tool_spec = {
+            "name": flag,
+            "description": description,
+            "input_schema": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+        
+        # Add index parameter only if needed
+        if needs_index:
+            tool_spec["input_schema"]["properties"]["index"] = {
+                "type": "integer",
+                "description": "Message index to operate on (-1 for last message)",
+                "default": -1
+            }
+        
+        # Handle main flag type if it's not a boolean
+        arg_type = info.get('type')
+        if arg_type and arg_type not in ('bool', 'boolean'):
+            json_type = TYPE_MAP.get(arg_type, "string")
+            tool_spec["input_schema"]["properties"]["input"] = {
+                "type": json_type,
+                "description": f"Input value for {flag}"
+            }
             
-        tool_spec["functions"][flag] = function_spec    
+            default_val = info.get('default')
+            if default_val is not None:
+                if json_type == "integer":
+                    tool_spec["input_schema"]["properties"]["input"]["default"] = int(default_val)
+                elif json_type == "number":
+                    tool_spec["input_schema"]["properties"]["input"]["default"] = float(default_val)
+                else:
+                    tool_spec["input_schema"]["properties"]["input"]["default"] = str(default_val)
+                    
+            # Add to required if no default provided
+            if default_val is None:
+                tool_spec["input_schema"]["required"].append("input")
+                
+        # Add subflags
+        subflags = info.get('subflags', {})
+        for subflag_name, subflag_info in subflags.items():
+            subflag_type = subflag_info.get('type')
+            if not subflag_type:
+                continue
+                
+            json_type = TYPE_MAP.get(subflag_type, "string")
+            
+            tool_spec["input_schema"]["properties"][subflag_name] = {
+                "type": json_type,
+                "description": f"Parameter '{subflag_name}' for {flag}"
+            }
+            
+            subflag_default = subflag_info.get('default')
+            if subflag_default is not None:
+                if json_type == "integer":
+                    try:
+                        tool_spec["input_schema"]["properties"][subflag_name]["default"] = int(subflag_default)
+                    except (ValueError, TypeError):
+                        tool_spec["input_schema"]["properties"][subflag_name]["default"] = 0
+                elif json_type == "number":
+                    try:
+                        tool_spec["input_schema"]["properties"][subflag_name]["default"] = float(subflag_default)
+                    except (ValueError, TypeError):
+                        tool_spec["input_schema"]["properties"][subflag_name]["default"] = 0.0
+                elif json_type == "boolean":
+                    tool_spec["input_schema"]["properties"][subflag_name]["default"] = str(subflag_default).lower() == "true"
+                else:
+                    tool_spec["input_schema"]["properties"][subflag_name]["default"] = str(subflag_default)
+            else:
+                # Add to required list if no default provided
+                tool_spec["input_schema"]["required"].append(subflag_name)
+        
+        tools.append(tool_spec)
+        
+    return tools
+
+def generate_tool_spec(output_path: str):
+    """Generates a tool specification JSON file based on registered tools."""
+    # Get full JSON schema
+    tools = registry_to_json_schema()
+    
+    tool_spec = {
+        "name": "llt",
+        "description": "Terminal tool for managing language model conversations with tool commands",
+        "tools": tools
+    }
 
     try:
         with open(output_path, 'w') as f:

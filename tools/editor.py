@@ -2,7 +2,7 @@ import os
 import subprocess
 import pyperclip  # type: ignore
 import json
-from typing import List, Dict
+from typing import List, Dict, Any
 from pathlib import Path
 import traceback
 import re
@@ -85,26 +85,27 @@ Suggestions:
         return error_msg, " ".join(runners[language]) if language in runners else ""
 
 
-@llt
-def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+@llt(needs_index=True)
+def execute(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Execute code blocks by language
     Type: bool
     Default: false
     flag: execute
     short: x
+    param: language string python
+    param: timeout int 30
     """
-    target_lang = args.get('code_block')
-    if not args.get('non_interactive') and not args.get('auto'):
+    plugin_args = context.get("execute", {})
+    target_lang = plugin_args.get('language', 'python')
+    timeout = plugin_args.get('timeout', 30)
+
+    if not context.get('non_interactive') and not context.get('auto'):
         index = get_valid_index(messages, "execute code blocks from", index)
         target_lang = input_handler.get_list_input(list(language_extension_map.keys()), f"Enter a language (default is {target_lang})")
-    else:
-        target_lang = args.get('language', target_lang)
-
-    timeout = int(args.get('timeout', 30))
 
     # Get all blocks with their positions in the text
-    content = messages[index]["content"]
+    content = messages[index].content
     
     # Regular expression to find code blocks - captures the entire block including ```
     pattern = r"```(\S+)\n(.*?)\n```"
@@ -123,7 +124,7 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         print(f"\nCode block ({language}):")
         Colors.print_colored(code, Colors.CYAN)
 
-        if args.get('auto') or (args.get('non_interactive') or confirm_action("Execute this block?")):
+        if context.get('auto') or (context.get('non_interactive') or confirm_action("Execute this block?")):
             try:
                 output, cmd = execute_code(code, language, timeout)
                 # Replace the block with its output
@@ -132,33 +133,41 @@ def execute(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
                 error_msg = f"Error executing block: {str(e)}"
                 Colors.print_colored(error_msg, Colors.RED)
     
-    messages[index]["content"] = content
+    messages[index].content = content
     return messages
 
 
-@llt
-def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+@llt(needs_index=True)
+def apply_blocks(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Write code blocks to files at project root path
     Type: bool
     Default: false
     flag: apply_blocks
     short: apply
+    param: lang string None
+    param: target string None
+    param: backup bool True
+    param: no_diff bool False
+    param: force bool False
+    param: timeout int 30
     """
+    plugin_args = context.get("apply_blocks", {})
+    lang_filter = plugin_args.get('lang')
+    target_file = plugin_args.get('target')
+    create_backups = plugin_args.get('backup', True)
+    show_diff = not plugin_args.get('no_diff', False)
+    force = plugin_args.get('force', False)
+    timeout = plugin_args.get('timeout', 30)
+
     msg_index = get_valid_index(messages, "write code blocks from", index)
-    lang_filter = args.get('lang')
-    target_file = args.get('target')
-    create_backups = args.get('backup', True)
-    show_diff = not args.get('no_diff', False)
-    force = args.get('force', False)
-    timeout = int(args.get('timeout', 30))
 
     modified: List[str] = []
     skipped: List[str] = []
     executed: List[str] = []
     edited: List[str] = []
     
-    project_dir = get_project_dir(args)
+    project_dir = get_project_dir(context)
     editor = os.environ.get("EDITOR", "vim")
 
     for block in iter_blocks(
@@ -178,7 +187,7 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
                     print("\nOutput:")
                     Colors.print_colored(output, Colors.GREEN)
                     executed.append(f"Command: {cmd}")
-                    messages.append(Message(role=args.get('role', 'user'), content=output))
+                    messages.append(Message(role=context.get('role', 'user'), content=output))
                 except Exception as e:
                     error_msg = f"Error executing bash block: {str(e)}"
                     Colors.print_colored(error_msg, Colors.RED)
@@ -238,41 +247,45 @@ def apply_blocks(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
         summary.append("Skipped:")
         summary.extend(f"  - {f}" for f in skipped)
 
-    messages.append({
-        "role": args.get('role', 'user'),
-        "content": "\n".join(summary)
-    })
+    messages.append(Message(
+        role=context.get('role', 'user'),
+        content="\n".join(summary)
+    ))
     return messages
 
 
-@llt
-def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+@llt(needs_index=True)
+def edit_content(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Edit message content in external editor
     Type: bool
     Default: false
     flag: content
-    short:
+    short: edit
+    param: backup bool True
     """
     if not messages:
         print("No messages to edit.")
         return messages
 
-    if not args.get('non_interactive'):
+    plugin_args = context.get("content", {})
+    create_backup = plugin_args.get('backup', True)
+
+    if not context.get('non_interactive'):
         msg_index = get_valid_index(messages, "edit content of", index)
     else:
         msg_index = index
 
     editor = os.environ.get("EDITOR", "vim")
 
-    with temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
+    with temp_file(suffix=".md", content=messages[msg_index].content) as temp_path:
         try:
             subprocess.run([editor, temp_path], check=True)
             new_content = file_handler.read(temp_path)
-            if new_content is not None and new_content != messages[msg_index]["content"]:
-                if args.get('backup', True):
+            if new_content is not None and new_content != messages[msg_index].content:
+                if create_backup:
                     backup_manager.create_backup(temp_path)
-                messages[msg_index]["content"] = new_content
+                messages[msg_index].content = new_content
 
         except Exception as e:
             Colors.print_colored(f"Error editing content: {e}", Colors.RED)
@@ -281,36 +294,41 @@ def edit_content(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
 
 
 @llt
-def paste(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+def paste(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Paste clipboard content as new user message
     Type: bool
     Default: false
     flag: paste
-    short:
+    short: pa
     """
-    messages.append(Message(role=args.get('role'), content=pyperclip.paste()))
+    messages.append(Message(role=context.get('role'), content=pyperclip.paste()))
     return messages
 
 
-@llt
-def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+@llt(needs_index=True)
+def copy(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Copy message content to clipboard
     Type: bool
     Default: false
     flag: copy
-    short:
+    short: c
+    param: blocks bool False
+    param: lang string None
     """
     if not messages:
         print("No messages to copy.")
         return messages
 
-    if not args.get('non_interactive'):
+    plugin_args = context.get("copy", {})
+    copy_blocks = plugin_args.get('blocks', False)
+    lang_filter = plugin_args.get('lang')
+
+    if not context.get('non_interactive'):
         index = get_valid_index(messages, "copy", index)
 
-    if args.get('blocks', False):
-        lang_filter = args.get('lang')
+    if copy_blocks:
         blocks = list(iter_blocks(
             messages[index],
             predicate=lambda b: not lang_filter or b["language"] == lang_filter
@@ -322,33 +340,38 @@ def copy(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         else:
             print("No matching code blocks found.")
     else:
-        pyperclip.copy(messages[index]["content"])
+        pyperclip.copy(messages[index].content)
         print("Copied message to clipboard.")
 
     return messages
 
 
-@llt
-def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
+@llt(needs_index=True)
+def file_include(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Include file content (including images) into the conversation
     Type: string
-    Default: None
+    Default: base
     flag: file
     short: f
     """
-    if not args.get('non_interactive') and not args.get('auto'):
-        file_path = input_handler.get_path_input("Enter file path to include", default=args.get('file'), root_dir=os.getcwd())
-    else:
-        file_path = args.get('file', None)
+    file_path = context.get("file", "")
+    
+    print(f"File path: {file_path}")
 
-    if not os.path.exists(file_path):
+    if not context.get('non_interactive') and not context.get('auto'):
+        file_path = input_handler.get_path_input("Enter file path to include", default=file_path, root_dir=os.getcwd())
+
+    if not file_path or not os.path.exists(file_path):
         Colors.print_colored(f"Error: File not found at {file_path}", Colors.RED)
         return messages
 
     _, ext = os.path.splitext(file_path)
     if ext.lower() in [".png", ".jpeg", ".jpg", ".gif", ".webp"]:
-        prompt = (args.get('prompt') if args.get('non_interactive') else input_handler.get_input("Enter prompt")) or args.get('prompt')
+        prompt = context.get('prompt')
+        if not context.get('non_interactive'):
+            prompt = input_handler.get_input("Enter prompt") or prompt
+        
         try:
             encoded_image = file_handler.encode_image_to_base64(file_path)
             if not encoded_image:
@@ -357,17 +380,17 @@ def file_include(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict
             Colors.print_colored(f"Failed to encode image: {e}", Colors.RED)
             return messages
         
-        messages.append({
-            "role": "user", 
-            "content": [
-                {"type": "image_url", "image_url": "file://" + file_path},
-                {"type": "text", "text": prompt},
+        messages.append(Message(
+            role="user", 
+            content=[
+                {"type": "image_url", "image_url": {"url": f"data:image/{ext[1:]};base64,{encoded_image}"}},
+                {"type": "text", "text": prompt or ""},
             ],
-        })
+        ))
     else:
         content = file_handler.read(file_path)
         if content is not None:
-            if ext.lower() in language_extension_map:
+            if ext.lower() in language_extension_map.values():
                 content = f"```{os.path.basename(file_path)}\n{content}\n```"
-            messages.append({"role": args.get('role', 'user'), "content": content})
+            messages.append(Message(role=context.get('role', 'user'), content=content))
     return messages

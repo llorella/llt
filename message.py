@@ -47,7 +47,7 @@ def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]
     """
     Description: Write conversation to file
     Type: string
-    Default: None
+    Default: temp.ll
     flag: write
     short: w
     """
@@ -110,12 +110,12 @@ def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return messages
 
 
-@llt
+@llt(needs_index=True)
 def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Attach a set of messages from file at specified index
     Type: string
-    Default: None
+    Default: bridge.ll
     flag: attach
     short:
     """
