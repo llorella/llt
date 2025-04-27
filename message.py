@@ -43,26 +43,26 @@ def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
 
 
 @llt
-def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
+def save(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
-    Description: Write conversation to file
+    Description: Save current conversation to file
     Type: string
     Default: temp.ll
-    flag: write
-    short: w
+    flag: save
+    short: s
     """
-    if dict["write"] == ".":
-        # if write is "." then write to the same file as load
-        dict["write"] = dict["load"]
+    if dict["save"] == ".":
+        # if save is "." then save to the same file as load
+        dict["save"] = dict["load"]
         
-    if not dict["non_interactive"] and not dict["auto"] or not dict["write"]:
+    if not dict["non_interactive"] and not dict["auto"]:
         ww_path = input_handler.get_path_input(
-            "Enter path to write ll file",
-            default=dict["write"] if dict["write"] else dict["load"],
+            "Enter path to save ll file",
+            default=dict["save"] if dict["save"] else dict["load"],
             root_dir=dict["ll_dir"]
         )
     else:
-        ww_path = os.path.join(dict["ll_dir"], dict["write"])
+        ww_path = os.path.join(dict["ll_dir"], dict["save"])
 
     os.makedirs(os.path.dirname(ww_path), exist_ok=True)
 
@@ -70,7 +70,7 @@ def write(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]
         json.dump(messages, file, indent=2)
     if not dict["non_interactive"]:
         Colors.print_colored(f"Saved {len(messages)} messages to '{ww_path}'.", Colors.GREEN)
-    dict["write"] = ww_path
+    dict["save"] = ww_path
     return messages
 
 

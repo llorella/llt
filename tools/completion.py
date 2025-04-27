@@ -9,9 +9,9 @@ import anthropic
 from message import Message
 from utils import (
     Colors, file_handler, input_handler, InputValue
-)
+) 
 from tools import llt
-from logger import llt_logger # Assuming logger is accessible
+from logger import llt_logger
 
 # Type mapping from tool spec to JSON schema
 TYPE_MAP = {
@@ -64,6 +64,7 @@ def get_provider_details(model_name: str):
                     details.get("completion_url", None)
                 )
     raise ValueError(f"Model {model_name} not found in config.")
+
 def send_request(
     completion_url: str,
     api_key_string: str,
@@ -151,23 +152,28 @@ def send_request(
     # If status code was < 400, return the successful response
     return Message(role="assistant", content=full_response_content)
 
-
-def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> Message:
+def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> Any:
     """
     Use the Anthropic python client for streaming completions with tool support.
     """
-    anthropic_client = anthropic.Client()
+    try:
+        from tools import registry_to_json_schema, make_scheduled_from_tool_use, ScheduledCommand
+        anthropic_client = anthropic.Client()
+    except Exception as e:
+        Colors.print_colored("Use tool mode requires the anthropic package.", Colors.RED)
+        llt_logger.log_error("Use tool mode initialization failed: Missing anthropic package.", {"error": str(e)})
+        return Message(role="assistant", content=f"Error: {str(e)}")
     
     # Extract system prompt if present
     if messages and messages[0].get("role") == "system":
         system_prompt = messages[0]["content"]
-        messages = messages[1:]
+        payload_msgs = messages[1:]
     else:
-        system_prompt = "You are a helpful assistant."    
-                
-
+        system_prompt = "You are a helpful assistant. You can use tools to assist the user."    
+        payload_msgs = messages
+    
     # Handle image content if present
-    for message in messages:
+    for message in payload_msgs:
         if isinstance(message.get("content"), list):
             for content_item in message["content"]:
                 if content_item.get("type") == "image" and content_item["source"].get("data", "").startswith("file://"):
@@ -175,30 +181,96 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> M
                     pass  # Handle image loading if needed
 
     response_content = ""
+    response_blocks = []  # Store all content blocks
+    use_tool_mode = bool(args.get("use_tool", False))
+    
+    print(f"max_tokens: {args.get('max_tokens', 1000)}")
+    
     params = {
-        "model": args.get('model'),
+        "model": args.get('model', "claude-3-7-sonnet-20250219"),
         "system": system_prompt,
-        "messages": messages,
-        "temperature": args.get('temperature'),
-        "max_tokens": args.get('max_tokens'),
+        "messages": payload_msgs,
+        "temperature": args.get('temperature', 0.7),
+        "max_tokens": args.get('max_tokens') or 8192,
     }
+    
+    # Add tool support if requested
+    if use_tool_mode:
+        llt_logger.log_info("Use tool mode enabled. Building tool catalogue.")
+        catalogue = registry_to_json_schema()
+        params["tools"] = catalogue
+        params["tool_choice"] = {"type": "auto"}
+        llt_logger.log_info("Sending request to Anthropic API with tools.", {
+            "model": params["model"],
+            "message_count": len(payload_msgs),
+            "tool_count": len(catalogue) if isinstance(catalogue, list) else 0,
+        })
     
     try:
         with anthropic_client.messages.stream(**params) as stream:
-            for text in stream.text_stream:
-                print(text, end="", flush=True)
-                response_content += text
-            print("\r")
+            for block in stream:
+                print(block)
+                # Store all blocks for later processing
+                if hasattr(block, "type"):
+                    if block.type == "text":
+                        print(block.text, end="", flush=True)
+                        response_content += block.text
+                        response_blocks.append(block)
+                    elif block.type == "tool_use":
+                        print(f"\n[TOOL USE] {block.name}: {block.input}\n", flush=True)
+                        response_blocks.append(block)
+                else:
+                    # Fallback for older SDKs or unexpected block types
+                    text = getattr(block, "text", None)
+                    if text:
+                        print(text, end="", flush=True)
+                        response_content += text
+                    print("\r")
     except Exception as e:
         Colors.print_colored(f"Anthropic API error: {str(e)}", Colors.RED)
         # Print the full traceback for debugging
         import traceback
         Colors.print_colored(f"Full traceback: {traceback.format_exc()}", Colors.RED)
         return Message(role="assistant", content=f"Error: {str(e)}")
+    
+    # Check if we have any tool use blocks and need to create scheduled commands
+    if use_tool_mode and any(getattr(block, "type", None) == "tool_use" for block in response_blocks):
+        # Collect assistant plain text
+        plain = "".join(block.text for block in response_blocks if getattr(block, "type", None) == "text")
         
+        if plain.strip():
+            llt_logger.log_info("Received plain text response from assistant.", {"content": plain.strip()})
+            messages.append(Message(role="assistant", content=plain.strip()))
+        else:
+            # If no text was returned, still add an empty assistant message to maintain conversation flow
+            messages.append(Message(role="assistant", content=""))
+        
+        # Turn tool_use blocks into ScheduledCommand objects
+        try:
+            scheduled = []
+            for block in response_blocks:
+                if getattr(block, "type", None) == "tool_use":
+                    llt_logger.log_info("Processing tool use block:", {"block": str(block)})
+                    scheduled.append(make_scheduled_from_tool_use(block))
+            
+            llt_logger.log_info("Tool use blocks processed into ScheduledCommand objects.", {
+                "scheduled_count": len(scheduled),
+                "scheduled_commands": [str(cmd) for cmd in scheduled],
+            })
+        except Exception as e:
+            Colors.print_colored(f"Error processing tool use blocks: {str(e)}", Colors.RED)
+            llt_logger.log_error("Failed to process tool use blocks.", {"error": str(e)})
+            return messages
+        
+        # Automatically re-ask the model after tools run
+        if scheduled:
+            scheduled.append(ScheduledCommand("complete", -1))
+            llt_logger.log_info("Scheduled re-ask of the model after tool execution.")
+            
+            return (messages, scheduled)
+    
+    # If no tool use or if tools aren't enabled, just return the message
     return Message(role="assistant", content=response_content)
-
-
     
 def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Message:
     """
@@ -263,94 +335,23 @@ def complete(messages: List[Message], args: Dict, index: int = -1):
     auto_mode = bool(args.get("auto", False))
 
     # ------------------------------------------------------------------ #
-    # 1) If use_tool mode AND using Anthropic → let Claude call our tools   #
-    # ------------------------------------------------------------------ #
-    if use_tool_mode and auto_mode:
-        try:
-            from tools import build_anthropic_catalogue, make_scheduled_from_tool_use
-            anthropic_client = anthropic.Client()
-        except Exception as e:
-            Colors.print_colored("use_tool mode requires the anthropic package.", Colors.RED)
-            llt_logger.log_error("use_tool mode initialization failed: Missing anthropic package.", {"error": str(e)})
-            return messages
-
-        llt_logger.log_info("use_tool mode enabled. Building tool catalogue.")
-        catalogue = build_anthropic_catalogue()
-
-        if messages and messages[0].get("role") == "system":
-            system_prompt = messages[0]["content"]
-            payload_msgs = messages[1:]
-        else:
-            system_prompt = (
-                "You are a helpful assistant. You can use tools to assist the user."
-            )
-            payload_msgs = messages
-
-        llt_logger.log_info("Sending request to Anthropic API.", {
-            "model": "claude-3-7-sonnet-20250219",
-            "system_prompt": system_prompt,
-            "message_count": len(payload_msgs),
-            "max_tokens": args.get("max_tokens") or 1024,
-            "temperature": args.get("temperature", 0.7),
-        })
-
-        try:
-            response = anthropic_client.messages.create(
-                model="claude-3-7-sonnet-20250219",
-                system=system_prompt,
-                messages=payload_msgs,
-                max_tokens=args.get("max_tokens") or 1024,
-                temperature=args.get("temperature", 0.7),
-                tools=catalogue,
-                tool_choice={"type": "auto"},
-            )
-        except Exception as e:
-            Colors.print_colored(f"Error during Anthropic API call: {str(e)}", Colors.RED)
-            llt_logger.log_error("Anthropic API call failed.", {"error": str(e)})
-            return messages
-
-        # Collect assistant plain text
-        plain = "".join(b.text for b in response.content if b.type == "text")
-        if plain.strip():
-            llt_logger.log_info("Received plain text response from assistant.", {"content": plain.strip()})
-            messages.append(Message(role="assistant", content=plain.strip()))
-
-        # Turn tool_use blocks into ScheduledCommand objects
-        from tools import ScheduledCommand  # late import to avoid cycles
-        try:
-            for block in response.content:
-                llt_logger.log_info("Response content block:", {"block": str(block)})
-            scheduled: List[ScheduledCommand] = [
-                make_scheduled_from_tool_use(b)
-                for b in response.content if b.type == "tool_use"
-            ]
-            llt_logger.log_info("Tool use blocks processed into ScheduledCommand objects.", {
-                "scheduled_count": len(scheduled),
-                "scheduled_commands": [str(cmd) for cmd in scheduled],
-            })
-        except Exception as e:
-            Colors.print_colored(f"Error processing tool use blocks: {str(e)}", Colors.RED)
-            llt_logger.log_error("Failed to process tool use blocks.", {"error": str(e)})
-            return messages
-
-        # Automatically re-ask the model after tools run
-        if scheduled:
-            scheduled.append(ScheduledCommand("complete", -1))
-            llt_logger.log_info("Scheduled re-ask of the model after tool execution.")
-
-        return (messages, scheduled) if scheduled else messages
-
-    # ------------------------------------------------------------------ #
-    # 2) NORMAL (non-use_tool) completion path                              #
+    # Handle completions with or without tool use                        #
     # ------------------------------------------------------------------ #
     provider, api_key, completion_url = get_provider_details(
         args.get("model", "deepseek-chat")
     )
+    
+    if use_tool_mode and provider != "anthropic":
+        log.error("Use tool mode is only supported with the Anthropic provider.")
 
     messages_with_images = encode_images(messages.copy(), args)
 
     if provider == "anthropic":
-        completion = get_anthropic_completion(messages_with_images, args)
+        result = get_anthropic_completion(messages_with_images, args)
+        # Check if result is a tuple with (messages, scheduled)
+        if isinstance(result, tuple) and len(result) == 2:
+            return result  # Return directly if it contains scheduled commands
+        completion = result  # Otherwise treat as a normal completion
     elif provider == "local":
         completion = get_local_completion(messages_with_images, args)
     else:
@@ -359,7 +360,6 @@ def complete(messages: List[Message], args: Dict, index: int = -1):
 
     messages.append(completion)
     return messages
-
 
 @llt
 def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> List[Dict[str, Any]]:
@@ -416,175 +416,6 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
 
     return messages
 
-@llt
-def suggest_tool(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    """
-    Description: Suggest a tool to use (auto-executes in auto mode)
-    Type: bool
-    Default: false
-    flag: suggest_tool
-    """
-    # Get tool specifications directly from registry_to_json_schema
-    # instead of parsing a JSON file
-    from tools import registry_to_json_schema
-    tool_specs = registry_to_json_schema()
-    tool_names = [tool['name'] for tool in tool_specs]
-    
-    # Check if Anthropic is available
-    try:
-        anthropic_client = anthropic.Client()
-    except (ImportError, NameError):
-        print(f"{Colors.RED}Error: Anthropic package not available. Please install with 'pip install anthropic'.{Colors.RESET}")
-        return messages
-        
-    # Create conversation context for the prompt
-    last_messages = messages[-3:] if len(messages) > 3 else messages
-    conversation_snippets = []
-    for i, msg in enumerate(messages):
-        content = msg.get('content', '')
-        if isinstance(content, str):
-            snippet = content[:50] + ('...' if len(content) > 50 else '')
-        else:
-            snippet = '[Complex content]'
-        conversation_snippets.append(f"Message {i}: {msg.get('role')} - {snippet}")
-        
-    # Construct optimized prompt
-    optimized_prompt = f"""# LLT Command Suggestion Task
-
-## CONTEXT
-- **Available Tools**: {', '.join(tool_names)}
-- **Current Conversation**:
-<conversation_context>
-{''.join(conversation_snippets)}
-</conversation_context>
-
-## OBJECTIVE
-Analyze the conversation and suggest the most helpful LLT command that would assist the user right now.
-
-## CONSTRAINTS
-- Suggest only valid LLT tools from the available tools list
-- Commands must follow format: <command> [arguments] [index]
-- Index parameter defaults to -1 (most recent message) if not specified
-- Focus on what would be most immediately useful given the conversation state
-
-## REASONING PROCESS
-1. Identify the current conversation topic or task
-2. Consider what action would most logically help the user next:
-   - Does the user need to save/load conversation? (load, write)
-   - Would they benefit from editing content? (edit_content, remove)
-   - Is code execution or file manipulation needed? (execute, write_file)
-   - Would they benefit from copying content? (copy)
-   - Is file inclusion helpful? (file_include)
-3. Select the most appropriate command with relevant arguments
-
-## EVALUATION CRITERIA
-- **Utility**: How immediately useful is this command?
-- **Relevance**: How well does it match the conversation context?
-- **Appropriateness**: Is this the right tool for the current situation?
-- **Impact**: How significantly will this improve the user's workflow?
-
-## OUTPUT FORMAT
-<command> [arguments] [index]
-
-Examples:
-- write --file conversation.ll
-- execute --language python
-- copy --blocks --lang python -1
-- file_include
-"""
-    
-    # Create a returned value container
-    result = []
-    auto_mode = args.get('auto', False)
-    
-    try:
-        # Log the request
-        llt_logger.log_info("Requesting tool suggestion from Anthropic.", 
-                           {"model": args.get('model', "claude-3-sonnet-20240229"), 
-                            "auto_mode": auto_mode})
-        
-        # Call Anthropic API with tools
-        response = anthropic_client.messages.create(
-            model=args.get('model', "claude-3-sonnet-20240229"),
-            max_tokens=1024,
-            messages=[{"role": "user", "content": optimized_prompt}],
-            tools=tool_specs,
-            tool_choice={"type": "auto"}
-        )
-
-        # Process the response to extract tool use
-        suggested_tool_use = None
-        if response.content:
-            for block in response.content:
-                if block.type == 'tool_use' and suggested_tool_use is None:
-                    suggested_tool_use = block
-                    break
-
-        if suggested_tool_use:
-            tool_name = suggested_tool_use.name
-            tool_input = suggested_tool_use.input
-            
-            # Extract index if present, defaults to -1
-            index = tool_input.get('index', -1) if isinstance(tool_input, dict) else -1
-            
-            # Format arguments for display
-            args_text = ""
-            if isinstance(tool_input, dict):
-                for k, v in tool_input.items():
-                    if k == 'index':
-                        continue  # Already handled separately
-                    if isinstance(v, str):
-                        args_text += f' --{k} "{v}"'
-                    elif isinstance(v, bool) and v:
-                        args_text += f' --{k}'
-                    elif not isinstance(v, bool):
-                        args_text += f' --{k} {v}'
-            
-            # Create formatted suggestion
-            suggestion = f"{tool_name}{args_text}{' ' + str(index) if index != -1 else ''}"
-            
-            # Display suggestion
-            print(f"{Colors.CYAN}AI Suggestion: {suggestion}{Colors.RESET}")
-            
-            # In auto mode, automatically enqueue the command
-            if auto_mode:
-                from tools import ScheduledCommand
-                
-                # Create scheduled command with appropriate parameters
-                cmd = ScheduledCommand(
-                    name=tool_name,
-                    index=index,
-                    value=None  # Value passed via context
-                )
-                
-                # Update context with the tool's parameters
-                if isinstance(tool_input, dict):
-                    for k, v in tool_input.items():
-                        if k != 'index':  # Skip index parameter which is handled separately
-                            if args.get(tool_name) is None:
-                                args[tool_name] = {}
-                            if not isinstance(args[tool_name], dict):
-                                args[tool_name] = {}
-                            args[tool_name][k] = v
-                
-                # Return messages and command to execute
-                print(f"{Colors.GREEN}Auto-executing suggested command: {suggestion}{Colors.RESET}")
-                result = (messages, [cmd])
-            else:
-                result = messages
-                
-        else:
-            print(f"{Colors.YELLOW}AI did not suggest a specific tool.{Colors.RESET}")
-            result = messages
-
-    except Exception as e:
-        print(f"{Colors.RED}Error during tool suggestion: {str(e)}{Colors.RESET}")
-        llt_logger.log_error(f"Tool suggestion error: {str(e)}", {"traceback": traceback.format_exc()})
-        result = messages
-
-    return result
-
-
 
 @llt
 def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
@@ -614,80 +445,5 @@ def change_role(messages: List[Message], args: Dict, index: int = -1) -> List[Me
         messages[index]["role"] = new_value
         if not args.get('non_interactive'):
             Colors.print_colored(f"Changed role of message at index {index} to: {new_value}", Colors.GREEN)
-    
-    return messages
-
-@llt
-def whisper(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
-    import pyaudio
-    import wave
-    import threading
-    import openai
-    import tempfile
-    import os
-
-    p = pyaudio.PyAudio()
-
-    FORMAT = pyaudio.paInt16
-    CHANNELS = 1
-    RATE = 44100
-    CHUNK = 1024
-
-    # global flag to control recording
-    stop_recording = threading.Event()
-    frames = []
-
-    def record_audio():
-        stream = p.open(
-            format=FORMAT,
-            channels=CHANNELS,
-            rate=RATE,
-            input=True,
-            frames_per_buffer=CHUNK,
-        )
-
-        print("Recording... Press Enter to stop.")
-        while not stop_recording.is_set():
-            data = stream.read(CHUNK)
-            frames.append(data)
-
-        stream.stop_stream()
-        stream.close()
-
-    def save_audio():
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as temp_audio:
-            wf = wave.open(temp_audio.name, "wb")
-            wf.setnchannels(CHANNELS)
-            wf.setsampwidth(p.get_sample_size(FORMAT))
-            wf.setframerate(RATE)
-            wf.writeframes(b"".join(frames))
-            wf.close()
-            return temp_audio.name
-
-    def transcribe_audio(audio_file):
-        with open(audio_file, "rb") as file:
-            transcript = openai.audio.transcriptions.create(
-                model="whisper-1",
-                file=file,
-            )
-        return transcript.text
-
-    record_thread = threading.Thread(target=record_audio)
-    record_thread.start()
-
-    input()
-    stop_recording.set()
-    record_thread.join()
-
-    audio_file = save_audio()
-    transcription = transcribe_audio(audio_file)
-
-    os.unlink(audio_file)
-
-    messages.append(Message(role="user", content=transcription))
-
-    print(f"Transcription: {transcription}")
-
-    p.terminate()
     
     return messages
