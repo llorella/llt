@@ -3,6 +3,8 @@
 import os
 import importlib.util
 from typing import Callable, Dict, Any, Optional, List, Tuple, TypeVar, cast, Union, Set
+# Ensure consistency with tools/completion.py for ToolUseBlock import
+from anthropic.types import ToolUseBlock 
 from logger import llt_logger
 import argparse
 import re
@@ -34,14 +36,20 @@ Messages = List[Dict[str, Any]]
 CommandsToQueue = List['ScheduledCommand']
 ToolResult = Union[Messages, Tuple[Messages, CommandsToQueue]]
 
-def llt(needs_index: bool = False) -> Callable:
+# Define a decorator type for Mypy
+F = TypeVar('F', bound=Callable[..., Any])
+
+def llt(*, needs_index: bool = False) -> Callable[[F], F]:
     """
     Enhanced decorator that registers a tool by parsing its docstring.
     
     Args:
         needs_index: Whether this tool needs the message index parameter
+    
+    Returns:
+        A decorated function that registers itself in the tools registry
     """
-    def decorator(fn: Callable) -> Callable:
+    def decorator(fn: F) -> F:
         """
         Enhanced decorator that registers a tool by parsing its docstring.
 
@@ -133,13 +141,13 @@ def llt(needs_index: bool = False) -> Callable:
         }
         
         _tools_registry[fn.__name__] = tool_registry_entry
-        return wrapper
+        return fn
     
-    # Handle direct usage like @llt without parentheses
-    if callable(needs_index):
-        fn, needs_index = needs_index, False
-        return decorator(fn)
-    
+    # The `if callable(needs_index):` block was an attempt to handle `@llt` (no parentheses).
+    # By making `needs_index` a keyword-only argument, we are encouraging explicit calls
+    # like `@llt()` or `@llt(needs_index=True)`, which should be clearer for Mypy.
+    # The decorator factory pattern is that `llt` (with its keyword arguments) 
+    # returns the `decorator` function, which then takes the actual function `fn` to be decorated.
     return decorator
 
 
@@ -150,7 +158,6 @@ def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
     """
     used_flags: Set[str] = set()
     used_shorts: Set[str] = set()
-
     for tool_name, info in _tools_registry.items():
         flag_str = info['flag']
         if info['type'] is None:
@@ -247,28 +254,53 @@ def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def make_scheduled_from_tool_use(
-    block: "anthropic.messages.ToolUseBlock",
+    block: ToolUseBlock, # Use the imported ToolUseBlock directly
 ) -> "ScheduledCommand":
     """
     Convert a Claude `tool_use` block into an LLT ScheduledCommand.
-    """
     
-    """
     Example: 
-    "block": "ToolUseBlock(id='toolu_01HyaVAFMSuLys6iYPKL7jMu', input={'input': 'main.py'}, name='file', type='tool_use')"
+        "block": "ToolUseBlock(id='toolu_01HyaVAFMSuLys6iYPKL7jMu', input={'input': 'main.py'}, name='file', type='tool_use')"
+        
+        returns:
+            ScheduledCommand(name='file', index=-1, value='main.py', args={})
     
-    returns 
-    
-    ScheduledCommand(name='file', index=-1, value='main.py', args={})
-    
+    Special cases:
+        For execute tool: If 'content' is present, it's passed directly in both value and args
     """
+    # Extract parameters from the tool use block
     inp = block.input or {}
     idx = inp.pop("index", -1) if isinstance(inp, dict) else -1
     value = inp.pop("input", None) if isinstance(inp, dict) else None
+    
+    # Debug information
     print(f"Block name: {block.name}, index: {idx}, value: {value}, args: {inp}")
-    print(_tools_registry)
-    print(_tools_registry.get(block.name))
-    return ScheduledCommand(name=block.name, index=idx, value=value, args=inp)
+    registry_info = _tools_registry.get(block.name)
+    print(f"Registry info for {block.name}: {registry_info}")
+    
+    # Special handling for execute and similar commands that need direct content
+    """ if block.name == "execute" and "content" in inp:
+        print(f"Special handling for execute command with content: {inp['content']}")
+        # Pass the entire input dictionary as both the value and args
+        return ScheduledCommand(name=block.name, index=idx, value=inp, args=inp)
+     """
+    # Standard handling for most tools
+    args_for_command: Dict[Any, Any] = {}
+    if isinstance(inp, dict):
+        args_for_command = cast(Dict[Any, Any], inp)
+    elif inp is not None: 
+        # If inp is not None and not a dict, it's an unexpected type.
+        # Log a warning and default to empty dict for args.
+        llt_logger.log_warning(f"Unexpected type for tool input: {type(inp)}. Expected dict or None.", {"input_value": inp})
+        # Depending on strictness, one might raise an error here.
+        # For now, proceed with empty args.
+
+    if value is not None:
+        return ScheduledCommand(name=block.name, index=idx, value=value, args=args_for_command)
+    elif args_for_command:  # If there are other args (which must be a dict by now)
+        return ScheduledCommand(name=block.name, index=idx, value=args_for_command, args=args_for_command)
+    else:  # Fallback for tools with no parameters (value is not None, inp was None or not a dict)
+        return ScheduledCommand(name=block.name, index=idx, value=True, args={})
 
 
 def pack_namespaced_args(args: argparse.Namespace) -> Dict[str, Any]:
@@ -497,7 +529,6 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
     
     if not args.non_interactive:
         llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
-    # Log command history with metadata to ~/.llt/cli_command.json
     
     command_log = {
         "timestamp": datetime.now().isoformat(),

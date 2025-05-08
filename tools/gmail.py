@@ -98,7 +98,7 @@ def create_message(email: Email) -> Dict:
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     return {'raw': raw}
 
-@llt
+@llt()
 def send_email(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
     Description: Send email using Gmail API

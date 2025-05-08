@@ -8,6 +8,8 @@
 !embeddings.py
 !gmail.py
 !sugar.py
+!project_context.py
+!toys.py
 !__init__.py
 !main.py
 !message.py

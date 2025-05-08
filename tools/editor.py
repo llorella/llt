@@ -85,7 +85,7 @@ Suggestions:
         return error_msg, " ".join(runners[language]) if language in runners else ""
 
 
-@llt(needs_index=True)
+@llt()
 def execute(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Execute code blocks by language
@@ -93,25 +93,77 @@ def execute(messages: List[Message], context: Dict[str, Any], index: int = -1) -
     Default: false
     flag: execute
     short: x
-    param: language string python
+    param: language string bash
     param: timeout int 30
+    param: content string None
     """
-    plugin_args = context.get("execute", {})
-    target_lang = plugin_args.get('language', 'python')
+    # Debug the full context to diagnose parameter passing
+    print("CONTEXT: ", context)
+    print(f"CONTEXT KEYS: {list(context.keys())}")
+    
+    # Look for execute key which should now be properly set by process_command
+    execute_value = context.get("execute", {})
+    print(f"EXECUTE VALUE TYPE: {type(execute_value)}")
+    print(f"EXECUTE VALUE: {execute_value}")
+    
+    # Handle both dictionary and non-dictionary cases for execute_value
+    plugin_args = {}
+    if isinstance(execute_value, dict):
+        plugin_args = execute_value
+    
+    # Debug all plugin args
+    print(f"PLUGIN ARGS: {plugin_args}")
+    
+    # Extract direct content parameter with detailed tracing
+    direct_content = None
+    if 'content' in plugin_args:
+        direct_content = plugin_args.get('content')
+        print(f"FOUND DIRECT CONTENT: {direct_content}")
+    else:
+        print("NO DIRECT CONTENT FOUND IN PLUGIN ARGS")
+    
+    target_lang = plugin_args.get('language', 'bash')  # Default to bash for direct execution
     timeout = plugin_args.get('timeout', 30)
 
     if not context.get('non_interactive') and not context.get('auto'):
         index = get_valid_index(messages, "execute code blocks from", index)
         target_lang = input_handler.get_list_input(list(language_extension_map.keys()), f"Enter a language (default is {target_lang})")
 
-    # Get all blocks with their positions in the text
-    content = messages[index].content
+    # Direct content execution path
+    # Check that direct_content exists and isn't the string 'None' (default from docstring)
+    if direct_content and direct_content != 'None':
+        print(f"Executing direct content: {direct_content}")
+        print(f"Language: {target_lang}")
+        output, cmd = execute_code(direct_content, target_lang, timeout)
+        print(f"\nExecuted command: {cmd}")
+        print("\nOutput:")
+        Colors.print_colored(output, Colors.GREEN)
+        messages.append(Message(role=context.get('role', 'user'), content=output))
+        return messages
+    
+    # Initialize content variable before processing code blocks
+    try:
+        content: str = messages[index]['content']
+        if not isinstance(content, str):
+            print(f"Warning: Message content is not a string: {type(content)}")
+            return messages
+    except (IndexError, KeyError):
+        print(f"Error: Cannot access message at index {index}")
+        return messages
     
     # Regular expression to find code blocks - captures the entire block including ```
     pattern = r"```(\S+)\n(.*?)\n```"
     code_blocks = list(re.finditer(pattern, content, re.DOTALL))
     
+    # Skip further processing if no code blocks found
+    if not code_blocks:
+        print("No code blocks found in the message.")
+        return messages
+    
     # Process blocks in reverse to avoid messing up positions
+    modified_content = content  # Create a working copy of the content
+    blocks_executed = False
+    
     for match in reversed(code_blocks):
         block_start, block_end = match.span()
         language = match.group(1)
@@ -127,13 +179,20 @@ def execute(messages: List[Message], context: Dict[str, Any], index: int = -1) -
         if context.get('auto') or (context.get('non_interactive') or confirm_action("Execute this block?")):
             try:
                 output, cmd = execute_code(code, language, timeout)
+                print(f"\nExecuted command: {cmd}")
+                print("\nOutput:")
+                Colors.print_colored(output, Colors.GREEN)
                 # Replace the block with its output
-                content = content[:block_start] + output + content[block_end:]
+                modified_content = modified_content[:block_start] + output + modified_content[block_end:]
+                blocks_executed = True
             except Exception as e:
                 error_msg = f"Error executing block: {str(e)}"
                 Colors.print_colored(error_msg, Colors.RED)
     
-    messages[index].content = content
+    # Only update the message if we actually executed blocks
+    if blocks_executed:
+        messages[index]['content'] = modified_content
+        print(f"Updated message content at index {index}")
     return messages
 
 
@@ -293,7 +352,7 @@ def edit_content(messages: List[Message], context: Dict[str, Any], index: int = 
     return messages
 
 
-@llt
+@llt()
 def paste(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Paste clipboard content as new user message
@@ -346,7 +405,7 @@ def copy(messages: List[Message], context: Dict[str, Any], index: int = -1) -> L
     return messages
 
 
-@llt(needs_index=True)
+@llt() # This one is already correct, no change needed here.
 def file_include(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Description: Include file content (including images) into the conversation

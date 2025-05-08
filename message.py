@@ -11,7 +11,7 @@ class Message(Dict):
     content: Any
 
 
-@llt
+@llt()
 def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Load ll file containing conversation
@@ -42,7 +42,7 @@ def load(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     return messages
 
 
-@llt
+@llt()
 def save(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Save current conversation to file
@@ -74,7 +74,7 @@ def save(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     return messages
 
 
-@llt
+@llt()
 def prompt(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Add user prompt message
@@ -83,15 +83,14 @@ def prompt(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     flag: prompt
     short: p
     """
-    message = Message(role=dict["role"], content=dict["prompt"])
-    messages += [message]
+    new_message = Message(role=dict["role"], content=dict["prompt"])
     if not dict.get('non_interactive'):
         Colors.print_colored("Added new message to the conversation.", Colors.GREEN)
     dict["prompt"] = None
-    return messages
+    return messages + [new_message]
 
 
-@llt
+@llt()
 def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Remove a message from the conversation
@@ -104,13 +103,19 @@ def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
         message_index = get_valid_index(messages, "remove", index)
     else:
         message_index = index
-    messages.pop(message_index)
+    
+    if not (0 <= message_index < len(messages)):
+        if not dict["non_interactive"]:
+            Colors.print_colored(f"Error: Index {message_index} is out of bounds for messages list of length {len(messages)}.", Colors.RED)
+        return messages # Return original list if index is invalid
+
+    new_messages = messages[:message_index] + messages[message_index+1:]
     if not dict["non_interactive"]:
         Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
-    return messages
+    return new_messages
 
 
-@llt(needs_index=True)
+@llt(needs_index=True) # This one is already correct
 def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Attach a set of messages from file at specified index
@@ -154,7 +159,7 @@ def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return messages
 
 
-@llt
+@llt()
 def detach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Detach a message from the conversation
@@ -172,7 +177,7 @@ def detach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return messages
 
 
-@llt
+@llt()
 def fold(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Fold contiguous messages of the same role into one
@@ -185,25 +190,42 @@ def fold(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
         return messages
         
     initial_length = len(messages)
+    folded_messages_list = []
     
-    current_role = messages[-1]["role"]
-    current_index = len(messages) - 1
+    if not messages: # Should be caught by the first check, but good for safety
+        return messages
+
+    # Iterate through a copy of messages to avoid issues if original dicts were planned to be modified
+    # but here we are building a new list with new dicts for folded content.
     
-    while current_index > 0:
-        if messages[current_index - 1]["role"] == current_role:
-            messages[current_index - 1]["content"] += "\n" + messages[current_index]["content"]
-            messages.pop(current_index)
+    current_processing_message_dict = None
+
+    for i, msg_dict_orig in enumerate(messages):
+        # Ensure we are working with copies if we plan to modify content,
+        # or construct new dicts for the folded_messages_list.
+        # Here, we'll construct new dicts for current_processing_message_dict.
+        
+        if current_processing_message_dict is None:
+            current_processing_message_dict = Message(**msg_dict_orig) # Create a new Message dict
+        elif current_processing_message_dict["role"] == msg_dict_orig["role"]:
+            # Append content to the current_processing_message_dict
+            current_processing_message_dict["content"] = str(current_processing_message_dict.get("content","")) + "\n" + str(msg_dict_orig.get("content",""))
         else:
-            current_role = messages[current_index - 1]["role"]
-        current_index -= 1
+            # Roles differ, so the previous message is complete
+            folded_messages_list.append(current_processing_message_dict)
+            current_processing_message_dict = Message(**msg_dict_orig) # Start a new one
+
+    # Add the last processed message
+    if current_processing_message_dict is not None:
+        folded_messages_list.append(current_processing_message_dict)
     
-    folded_messages = initial_length - len(messages)
+    folded_count = initial_length - len(folded_messages_list)
     if not dict.get("non_interactive"):
-        Colors.print_colored(f"Folded {folded_messages} message(s).", Colors.GREEN)
-    return messages
+        Colors.print_colored(f"Folded {folded_count} message(s). Resulting in {len(folded_messages_list)} messages.", Colors.GREEN)
+    return folded_messages_list
 
 
-@llt
+@llt()
 def insert(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Insert a new message at a specified index
@@ -216,12 +238,23 @@ def insert(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
         message_index = get_valid_index(messages, "insert", index)
     else:
         message_index = index
-    messages.insert(message_index, Message(role="user", content="Message inserted."))
+
+    # Ensure index is within bounds for insertion
+    # Python's list.insert handles this by clamping, but for constructing a new list:
+    if message_index < 0:
+        message_index = 0
+    if message_index > len(messages):
+        message_index = len(messages)
+        
+    new_message_to_insert = Message(role="user", content="Message inserted.")
+    
+    new_messages = messages[:message_index] + [new_message_to_insert] + messages[message_index:]
+    
     Colors.print_colored(f"Inserted new message at index {message_index + 1}.", Colors.GREEN)
-    return messages
+    return new_messages
 
 
-@llt
+@llt()
 def change_role(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Modify the role of a message
@@ -234,13 +267,29 @@ def change_role(messages: List[Message], dict: Dict, index: int = -1) -> List[Me
         index = get_valid_index(messages, "modify role of", index)
         new_role = input_handler.get_input("Select new role for the message", ["user", "assistant", "system", "tool"])
     else:
-        new_role = dict.get('role', 'user')
-    messages[index]["role"] = new_role
-    Colors.print_colored(f"Modified role of message at index {index + 1} to '{new_role}'.", Colors.GREEN)
-    return messages
+        new_role = dict.get('role', 'user') # Default to 'user' if not specified in non-interactive
+
+    if not (0 <= index < len(messages)):
+        if not dict.get('non_interactive', False): # Check if non_interactive is explicitly false
+            Colors.print_colored(f"Error: Index {index} is out of bounds.", Colors.RED)
+        return messages # Return original list if index is invalid
+
+    # Create a new list with a new dictionary for the modified message
+    new_messages_list = list(messages) # Shallow copy the list
+    
+    # Create a new dictionary for the message being changed to ensure immutability of original message dict
+    original_message_dict = new_messages_list[index]
+    modified_message_dict = Message(**original_message_dict) # Make a copy
+    modified_message_dict["role"] = new_role
+    
+    new_messages_list[index] = modified_message_dict # Replace the dict in the copied list
+    
+    if not dict.get('non_interactive', False):
+        Colors.print_colored(f"Modified role of message at index {index + 1} to '{new_role}'.", Colors.GREEN)
+    return new_messages_list
 
 
-@llt
+@llt()
 def view(messages: List[Message], dict: Dict, index: int = 0) -> List[Message]:
     """
     Description: View messages with formatting
@@ -248,6 +297,7 @@ def view(messages: List[Message], dict: Dict, index: int = 0) -> List[Message]:
     Default: false
     flag: view
     short: v
+    param: all bool False
     """
     if not messages:
         Colors.print_colored("No messages to display.", Colors.YELLOW)
@@ -269,11 +319,11 @@ def view(messages: List[Message], dict: Dict, index: int = 0) -> List[Message]:
 
         if isinstance(content, list):
             for item in content:
-                if item["type"] == "text":
-                    print(item["text"])
-                elif item["type"] == "image_url":
+                if item.get("type") == "text":
+                    print(item.get("text", ""))
+                elif item.get("type") == "image_url":
                     Colors.print_colored(
-                        f"Image path: {item['image_url']}", Colors.CYAN
+                        f"Image path: {item.get('image_url', '')}", Colors.CYAN
                     )
         else:
             print(content)
@@ -281,14 +331,23 @@ def view(messages: List[Message], dict: Dict, index: int = 0) -> List[Message]:
         Colors.print_colored(footer, color)
         Colors.print_colored(f"Message {idx} of {len(messages)}", Colors.YELLOW)
 
-    for i, msg in enumerate(messages, 1):
-        view_helper(msg, i)
-        print("-" * 50)  # Separator between messages
-    Colors.print_colored(f"Total messages shown: {len(messages)}", Colors.YELLOW)
+    show_all = dict.get("all", False)
+    if show_all:
+        for i, msg in enumerate(messages, 1):
+            view_helper(msg, i)
+            print("-" * 50)
+        Colors.print_colored(f"Total messages shown: {len(messages)}", Colors.YELLOW)
+    else:
+        # Clamp index to valid range
+        if index < 0:
+            index = len(messages) + index
+        index = max(0, min(index, len(messages) - 1))
+        view_helper(messages[index], index + 1)
+        Colors.print_colored(f"Total messages shown: 1", Colors.YELLOW)
     return messages
 
 
-@llt
+@llt()
 def cut(messages: List[str], dict: Dict, index: int = -1) -> List[str]:
     """
     Description: Cut messages within a specified range

@@ -22,7 +22,7 @@ def save_xml_tags(tags: List[str]) -> None:
     except Exception as e:
         llt_logger.log_error(f"Error saving XML tags: {e}")
 
-@llt
+@llt()
 def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
     Description: Wrap messages in xml tags.
@@ -72,7 +72,7 @@ def parse_xml_content(content: str, tag_name: str) -> str:
     # Return the single match
     return matches[0].strip()
 
-@llt
+@llt()
 def parse_xml(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
     Description: Parse XML content from a message.
@@ -91,7 +91,7 @@ def parse_xml(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         messages[index]["content"] = parse_xml_content(original_content, tag_name)
     return messages
 
-@llt
+@llt()
 def strip_trailing_newline(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """Strip trailing newlines from message content."""
     if not args.get('non_interactive'):
@@ -99,7 +99,7 @@ def strip_trailing_newline(messages: List[Dict], args: Dict, index: int = -1) ->
     messages[index]["content"] = messages[index]["content"].rstrip("\n")
     return messages
 
-@llt
+@llt()
 def indent(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """Indent message content by specified amount."""
     if not args.get('non_interactive'):
@@ -112,7 +112,7 @@ def indent(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     )
     return messages
 
-@llt
+@llt()
 def code_block(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
     """
     Description: Wrap message in a code block with language syntax highlighting

@@ -2,9 +2,11 @@ import requests
 import os
 import yaml
 import json
-from typing import List, Dict, Any, Iterable
+from typing import List, Dict, Any, Iterable, cast # Import cast
 
 import anthropic
+from anthropic.types import ToolUseBlock, ContentBlockStopEvent # Import ToolUseBlock and ContentBlockStopEvent
+from tools import registry_to_json_schema, make_scheduled_from_tool_use, ScheduledCommand
 
 from message import Message
 from utils import (
@@ -12,6 +14,13 @@ from utils import (
 ) 
 from tools import llt
 from logger import llt_logger
+
+# Cached tool schema and its version identifier
+_CACHED_ANTHROPIC_TOOL_CATALOGUE = None
+_CACHED_TOOLS_JSON_MTIME = None
+# Path to tools.json, assuming it's in LLT_DIR or CWD (defaults to CWD if LLT_DIR is not set).
+TOOLS_JSON_PATH = os.path.join(os.getenv("LLT_DIR", os.getcwd()), "tools.json")
+
 
 # Type mapping from tool spec to JSON schema
 TYPE_MAP = {
@@ -157,20 +166,15 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
     Use the Anthropic python client for streaming completions with tool support.
     """
     try:
-        from tools import registry_to_json_schema, make_scheduled_from_tool_use, ScheduledCommand
         anthropic_client = anthropic.Client()
     except Exception as e:
-        Colors.print_colored("Use tool mode requires the anthropic package.", Colors.RED)
         llt_logger.log_error("Use tool mode initialization failed: Missing anthropic package.", {"error": str(e)})
         return Message(role="assistant", content=f"Error: {str(e)}")
     
-    # Extract system prompt if present
-    if messages and messages[0].get("role") == "system":
-        system_prompt = messages[0]["content"]
-        payload_msgs = messages[1:]
-    else:
-        system_prompt = "You are a helpful assistant. You can use tools to assist the user."    
-        payload_msgs = messages
+    # Extract system prompt if present (only the first system message, ignore others)
+    system_msgs = list(filter(lambda m: m.get("role") == "system", messages))
+    system_prompt = system_msgs[0]["content"] if system_msgs else "You are a helpful assistant. You can use tools to assist the user."
+    payload_msgs = list(filter(lambda m: m.get("role") != "system", messages))
     
     # Handle image content if present
     for message in payload_msgs:
@@ -181,23 +185,54 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
                     pass  # Handle image loading if needed
 
     response_content = ""
-    response_blocks = []  # Store all content blocks
+    tool_blocks: List[ToolUseBlock] = []  # Explicitly type tool_blocks
     use_tool_mode = bool(args.get("use_tool", False))
-    
-    print(f"max_tokens: {args.get('max_tokens', 1000)}")
-    
+        
     params = {
         "model": args.get('model', "claude-3-7-sonnet-20250219"),
         "system": system_prompt,
         "messages": payload_msgs,
         "temperature": args.get('temperature', 0.7),
-        "max_tokens": args.get('max_tokens') or 8192,
     }
+    
+    if args.get('max_tokens'):
+        params["max_tokens"] = args['max_tokens']
     
     # Add tool support if requested
     if use_tool_mode:
-        llt_logger.log_info("Use tool mode enabled. Building tool catalogue.")
-        catalogue = registry_to_json_schema()
+        llt_logger.log_info("Use tool mode enabled. Attempting to use/build tool catalogue.")
+        
+        global _CACHED_ANTHROPIC_TOOL_CATALOGUE, _CACHED_TOOLS_JSON_MTIME
+        
+        current_mtime = None
+        try:
+            if os.path.exists(TOOLS_JSON_PATH):
+                current_mtime = os.path.getmtime(TOOLS_JSON_PATH)
+            else:
+                llt_logger.log_warning(f"Tool definition file {TOOLS_JSON_PATH} not found. Tool schema caching may be affected.")
+        except OSError as e:
+            llt_logger.log_warning(f"Could not get mtime for {TOOLS_JSON_PATH}: {e}. Tool schema caching may be affected.")
+
+        # Cache validation logic
+        if _CACHED_ANTHROPIC_TOOL_CATALOGUE is not None:
+            # Case 1: File existed and mtime matches
+            if current_mtime is not None and _CACHED_TOOLS_JSON_MTIME is not None and current_mtime == _CACHED_TOOLS_JSON_MTIME:
+                llt_logger.log_info("Using cached tool catalogue (version match based on tools.json mtime).")
+            # Case 2: File was missing/inaccessible before, and still is. Assume cache is valid for this state.
+            elif current_mtime is None and _CACHED_TOOLS_JSON_MTIME is None:
+                llt_logger.log_info("Using cached tool catalogue (tool file tools.json still missing/inaccessible).")
+            # Case 3: Mismatch (file changed, appeared, or disappeared). Invalidate cache.
+            else:
+                llt_logger.log_info("Tool definition file tools.json changed, appeared, or disappeared. Regenerating tool catalogue.")
+                _CACHED_ANTHROPIC_TOOL_CATALOGUE = None # Invalidate cache
+        
+        if _CACHED_ANTHROPIC_TOOL_CATALOGUE is None:
+            llt_logger.log_info("No valid cached tool catalogue found or cache invalidated. Generating...")
+            _CACHED_ANTHROPIC_TOOL_CATALOGUE = registry_to_json_schema()
+            _CACHED_TOOLS_JSON_MTIME = current_mtime # Cache the mtime (or None if file was inaccessible)
+            llt_logger.log_info("Tool catalogue generated and cached.")
+        
+        catalogue = _CACHED_ANTHROPIC_TOOL_CATALOGUE
         params["tools"] = catalogue
         params["tool_choice"] = {"type": "auto"}
         llt_logger.log_info("Sending request to Anthropic API with tools.", {
@@ -209,16 +244,18 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
     try:
         with anthropic_client.messages.stream(**params) as stream:
             for block in stream:
-                print(block)
-                # Store all blocks for later processing
                 if hasattr(block, "type"):
                     if block.type == "text":
                         print(block.text, end="", flush=True)
                         response_content += block.text
-                        response_blocks.append(block)
-                    elif block.type == "tool_use":
-                        print(f"\n[TOOL USE] {block.name}: {block.input}\n", flush=True)
-                        response_blocks.append(block)
+                    elif block.type == "content_block_stop":
+                        # Assuming 'block' here is an object that has a 'content_block' attribute
+                        # and that 'content_block' has a 'type' attribute.
+                        # This was the original structure that seemed to work logically.
+                        if hasattr(block, 'content_block') and hasattr(block.content_block, 'type') and block.content_block.type == "tool_use":
+                            # If it's a tool_use content block, cast it to ToolUseBlock before appending
+                            tool_blocks.append(cast(ToolUseBlock, block.content_block))
+                        
                 else:
                     # Fallback for older SDKs or unexpected block types
                     text = getattr(block, "text", None)
@@ -231,27 +268,21 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
         # Print the full traceback for debugging
         import traceback
         Colors.print_colored(f"Full traceback: {traceback.format_exc()}", Colors.RED)
-        return Message(role="assistant", content=f"Error: {str(e)}")
+        return Message(role="user", content=f"Error: {str(e)}")
     
     # Check if we have any tool use blocks and need to create scheduled commands
-    if use_tool_mode and any(getattr(block, "type", None) == "tool_use" for block in response_blocks):
-        # Collect assistant plain text
-        plain = "".join(block.text for block in response_blocks if getattr(block, "type", None) == "text")
-        
-        if plain.strip():
-            llt_logger.log_info("Received plain text response from assistant.", {"content": plain.strip()})
-            messages.append(Message(role="assistant", content=plain.strip()))
-        else:
-            # If no text was returned, still add an empty assistant message to maintain conversation flow
-            messages.append(Message(role="assistant", content=""))
-        
+    if tool_blocks:
+    
         # Turn tool_use blocks into ScheduledCommand objects
         try:
             scheduled = []
-            for block in response_blocks:
-                if getattr(block, "type", None) == "tool_use":
-                    llt_logger.log_info("Processing tool use block:", {"block": str(block)})
-                    scheduled.append(make_scheduled_from_tool_use(block))
+            # Rename loop variable to avoid potential scope collision with 'block' from the stream
+            for tool_use_item in tool_blocks: 
+                # Since tool_blocks is List[ToolUseBlock], tool_use_item is ToolUseBlock.
+                # The getattr check for "type" == "tool_use" is redundant here if the list is correctly populated.
+                llt_logger.log_info("Processing tool use block:", {"block": str(tool_use_item)})
+                # make_scheduled_from_tool_use expects a ToolUseBlock.
+                scheduled.append(make_scheduled_from_tool_use(tool_use_item))
             
             llt_logger.log_info("Tool use blocks processed into ScheduledCommand objects.", {
                 "scheduled_count": len(scheduled),
@@ -278,7 +309,7 @@ def get_local_completion(messages: List[Message], args: Dict[str, Any]) -> Messa
     """
     return Message(role="assistant", content="TODO: Reintegrate local LLM support. This is a placeholder response.")
 
-@llt
+@llt()
 def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1) -> List[Message]:
     """
     Encode image URLs into the proper format for different providers.
@@ -322,7 +353,7 @@ def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1
     return encoded_messages or messages
                 
 
-@llt
+@llt()
 def complete(messages: List[Message], args: Dict, index: int = -1):
     """
     Description: Generate a completion from the LLM
@@ -342,9 +373,11 @@ def complete(messages: List[Message], args: Dict, index: int = -1):
     )
     
     if use_tool_mode and provider != "anthropic":
-        log.error("Use tool mode is only supported with the Anthropic provider.")
+        llt_logger.log_error("Use tool mode is only supported with the Anthropic provider.")
 
-    messages_with_images = encode_images(messages.copy(), args)
+    # encode_images handles creating a copy if modifications are needed for image encoding.
+    # The original 'messages' list passed to 'complete' should not be mutated directly by encode_images.
+    messages_with_images = encode_images(messages, args)
 
     if provider == "anthropic":
         result = get_anthropic_completion(messages_with_images, args)
@@ -358,10 +391,10 @@ def complete(messages: List[Message], args: Dict, index: int = -1):
         completion = send_request(completion_url, api_key,
                                   messages_with_images, args)
 
-    messages.append(completion)
-    return messages
+    # Return a new list with the completion appended
+    return messages_with_images + [completion]
 
-@llt
+@llt()
 def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> List[Dict[str, Any]]:
     """
     Description: Modify configuration arguments
@@ -417,7 +450,7 @@ def modify_args(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> 
     return messages
 
 
-@llt
+@llt()
 def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     new_value = input_handler.get_list_input(full_model_choices)
     if new_value:
@@ -425,7 +458,7 @@ def change_model(messages: List[Message], args: Dict, index: int = -1) -> List[M
         Colors.print_colored(f"Changed model to: {new_value}", Colors.GREEN)
     return messages
 
-@llt
+@llt()
 def change_role(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     """
     Description: Change the role of the message at index

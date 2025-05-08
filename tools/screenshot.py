@@ -47,7 +47,7 @@ def _check_dependencies() -> tuple[str, List[str]]:
             
     raise RuntimeError("No compatible screenshot tool found. Please install gnome-screenshot, grim (Wayland), maim (X11), or ffmpeg.")
 
-@llt
+@llt()
 def screenshot(messages: List[Message], args: Dict, index: int = -1) -> List[Message]:
     """
     Description: Capture a screenshot using ffmpeg

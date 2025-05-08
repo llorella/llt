@@ -76,7 +76,9 @@ class AppState:
 
     def to_tool_args(self) -> Tuple[Messages, Context]:
         """Convert state to tool-compatible arguments."""
-        return self.messages.copy(), dict(self.context)
+        # Tools are now responsible for not mutating the messages list they receive.
+        # If they change it, they must return a new list.
+        return self.messages, dict(self.context)
 
     @classmethod
     def from_tool_result(
@@ -381,11 +383,28 @@ def process_command(
             # If the command has a specific value, temporarily override the context
             original_value = None
             
-            if cmd.value is not None and cmd.name in context:
-                # Save original value
-                original_value = context.get(cmd.name)
-                # Set the specific value for this command execution
-                context[cmd.name] = cmd.value
+            if cmd.value is not None:
+                # Save original value if it exists
+                if cmd.name in context:
+                    original_value = context.get(cmd.name)
+                
+                # Debug print the command details
+                print(f"DEBUG: Command {cmd.name}, Value type: {type(cmd.value)}, Value: {cmd.value}")
+                
+                # Special handling for dictionary values (complex parameters)
+                if isinstance(cmd.value, dict):
+                    # Initialize as empty dict if not already present
+                    if cmd.name not in context or not isinstance(context[cmd.name], dict):
+                        context[cmd.name] = {}
+                        
+                    # Copy all values from cmd.value to context[cmd.name]
+                    for key, value in cmd.value.items():
+                        context[cmd.name][key] = value
+                        
+                    print(f"DEBUG: Updated context[{cmd.name}] with dictionary: {context[cmd.name]}")
+                else:
+                    # For simple values, just assign directly
+                    context[cmd.name] = cmd.value
             
             # Execute tool with mutable structures
             result = cmd_map[cmd.name](messages, context, cmd.index)
@@ -485,9 +504,6 @@ def get_next_command(
         llt_logger.log_info("Non-interactive mode: no more commands to process.")
         return None
 
-    llt_logger.log_info("Awaiting interactive user input for next command.", {
-        "available_commands": list(cmd_map.keys())
-    })
     cmd_name, value, index = llt_interactive_input(list(cmd_map.keys()))
     internal_index = index if index is not None else -1
     llt_logger.log_info("Received interactive command.", {
@@ -583,7 +599,7 @@ def main() -> None:
     cmd_map = init_cmd_map()
     
     # Display greeting only in interactive mode
-    if not args.non_interactive:
+    if not args.non_interactive: 
         Colors.print_header()
         print(create_greeting(initial_state.context))
     

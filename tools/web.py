@@ -181,22 +181,24 @@ def get_tags_for_type(content_type: str) -> List[str]:
     return TAG_GROUPS.get(content_type, DEFAULT_TAGS['content'])
 
 
-@llt
-def url_fetch(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> List[Dict[str, Any]]:
+@llt()
+def url_fetch(messages: List[Dict[str, Any]], context: Dict[str, Any], index: int = -1) -> List[Dict[str, Any]]:
     """
     Description: Fetch and process URL content
     Type: bool
     Default: false
     flag: url_fetch
     short: url
+    param: tags string content          # Type of tags to fetch (code, text, structure, lists, tables) 
+    param: include_metadata bool False  # Include metadata in the result
     """
-    if not args.get('url_fetch'):
+    if not context.get('url_fetch'):
         index = get_valid_index(messages, "fetch url from", index)
 
     url = messages[index]["content"]
 
-    if args.get('tags'):
-        tags_arg = args.get('tags')
+    if context.get('tags'):
+        tags_arg = context.get('tags')
         if isinstance(tags_arg, str):
             tags = get_tags_for_type(tags_arg)
         elif isinstance(tags_arg, list):
@@ -212,15 +214,15 @@ def url_fetch(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> Li
     result = process_url(
         url=url,
         tags=tags,
-        include_metadata=args.get('include_metadata', False)
+        include_metadata=context.get('include_metadata', False)
     )
 
     if result:
         formatted_content, metadata = result
-        messages.append({
-            'role': args.get('role', 'user'),
+        new_message = {
+            'role': context.get('role', 'user'),
             'content': f'<url>\n{url}\n</url>\n\n<content>\n{formatted_content}\n</content>\n'
-        })
+        }
 
         llt_logger.log_info("URL content fetched and processed", {
             "url": url,
@@ -228,6 +230,9 @@ def url_fetch(messages: List[Dict[str, Any]], args: Dict, index: int = -1) -> Li
             "content_length": len(formatted_content),
             **metadata
         })
+        
+        # Return a new list instead of modifying in place (immutability principle)
+        return messages + [new_message]
 
     return messages
 
@@ -237,15 +242,15 @@ def main() -> int:
         url = sys.argv[1]
         content_type = sys.argv[2] if len(sys.argv) == 3 else 'content'
 
-        from argparse import Namespace
-        args = Namespace(
-            role='user',
-            tags=get_tags_for_type(content_type),
-            url=url,
-            include_metadata=True
-        )
+        # Use a dictionary instead of Namespace to match the updated function signature
+        context = {
+            'role': 'user',
+            'tags': get_tags_for_type(content_type),
+            'url_fetch': True,  # Enable the tool
+            'include_metadata': True
+        }
 
-        result = url_fetch([{'role': 'user', 'content': url}], args, 0)
+        result = url_fetch([{'role': 'user', 'content': url}], context, 0)
         Colors.print_colored(json.dumps(result, indent=2), Colors.GREEN)
         return 0
 
