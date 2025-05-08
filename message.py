@@ -104,7 +104,7 @@ def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     else:
         message_index = index
     
-    if not (0 <= message_index < len(messages)):
+    if not (0 <= abs(message_index) < len(messages)):
         if not dict["non_interactive"]:
             Colors.print_colored(f"Error: Index {message_index} is out of bounds for messages list of length {len(messages)}.", Colors.RED)
         return messages # Return original list if index is invalid
