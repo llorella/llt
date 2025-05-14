@@ -2,11 +2,13 @@ import os
 import subprocess
 import pyperclip  # type: ignore
 import json
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional, Union, Literal
 from pathlib import Path
 import traceback
 import re
+import base64
 
+from pydantic import BaseModel, Field
 from message import Message
 from tools import llt
 from utils import (
@@ -17,6 +19,67 @@ from utils import (
     file_handler, input_handler, diff_handler,
 )
 
+# Pydantic models for file content parsing and validation
+class FileBase(BaseModel):
+    """Base model for file operations."""
+    path: str
+    exists: bool = False
+
+class ImageFile(FileBase):
+    """Model for image file data."""
+    media_type: str
+    data: Optional[str] = None  # Base64 encoded data
+    
+    @classmethod
+    def from_path(cls, path: str) -> "ImageFile":
+        """Create an ImageFile instance from a file path."""
+        _, ext = os.path.splitext(path)
+        media_type = f"image/{ext[1:].lower()}"
+        exists = os.path.exists(path)
+        
+        data = None
+        if exists:
+            try:
+                with open(path, "rb") as f:
+                    data = base64.b64encode(f.read()).decode("utf-8")
+            except Exception as e:
+                Colors.print_colored(f"Error reading image file: {e}", Colors.RED)
+        
+        return cls(path=path, exists=exists, media_type=media_type, data=data)
+
+class TextFile(FileBase):
+    """Model for text file data."""
+    content: Optional[str] = None
+    language: Optional[str] = None
+    
+    @classmethod
+    def from_path(cls, path: str) -> "TextFile":
+        """Create a TextFile instance from a file path."""
+        _, ext = os.path.splitext(path)
+        exists = os.path.exists(path)
+        
+        # Try to determine language from extension
+        language = None
+        for lang, ext_list in language_extension_map.items():
+            if ext in ext_list:
+                language = lang
+                break
+        
+        content = None
+        if exists:
+            content = file_handler.read(path)
+        
+        return cls(path=path, exists=exists, content=content, language=language)
+
+class ImageContent(BaseModel):
+    """Model for image content in messages."""
+    type: Literal["image"]
+    source: Dict[str, str]
+
+class ImageUrlContent(BaseModel):
+    """Model for image URL content in messages."""
+    type: Literal["image_url"]
+    image_url: Union[str, Dict[str, str]]
 
 def execute_code(code: str, language: str, timeout: int = 30) -> tuple[str, str]:
     """
@@ -35,9 +98,6 @@ def execute_code(code: str, language: str, timeout: int = 30) -> tuple[str, str]
     try:
         if language not in runners:
             raise ValueError(f"Unsupported language: {language}")
-        
-      #  if args.get('non_interactive') and not args.get('auto'):
-            # ask to cd to project dir
 
         with temp_file(suffix=f".{language}", content=code) as temp_path:
             try:
@@ -92,45 +152,33 @@ def execute(messages: List[Message], context: Dict[str, Any], index: int = -1) -
     Type: bool
     Default: false
     flag: execute
-    short: x
+    short: ex
     param: language string bash
     param: timeout int 30
     param: content string None
     """
-    # Debug the full context to diagnose parameter passing
     print("CONTEXT: ", context)
     print(f"CONTEXT KEYS: {list(context.keys())}")
-    
-    # Look for execute key which should now be properly set by process_command
     execute_value = context.get("execute", {})
     print(f"EXECUTE VALUE TYPE: {type(execute_value)}")
     print(f"EXECUTE VALUE: {execute_value}")
-    
-    # Handle both dictionary and non-dictionary cases for execute_value
     plugin_args = {}
     if isinstance(execute_value, dict):
         plugin_args = execute_value
-    
-    # Debug all plugin args
     print(f"PLUGIN ARGS: {plugin_args}")
-    
-    # Extract direct content parameter with detailed tracing
     direct_content = None
     if 'content' in plugin_args:
         direct_content = plugin_args.get('content')
         print(f"FOUND DIRECT CONTENT: {direct_content}")
     else:
         print("NO DIRECT CONTENT FOUND IN PLUGIN ARGS")
-    
-    target_lang = plugin_args.get('language', 'bash')  # Default to bash for direct execution
+    target_lang = plugin_args.get('language', 'bash')
     timeout = plugin_args.get('timeout', 30)
 
     if not context.get('non_interactive') and not context.get('auto'):
         index = get_valid_index(messages, "execute code blocks from", index)
         target_lang = input_handler.get_list_input(list(language_extension_map.keys()), f"Enter a language (default is {target_lang})")
 
-    # Direct content execution path
-    # Check that direct_content exists and isn't the string 'None' (default from docstring)
     if direct_content and direct_content != 'None':
         print(f"Executing direct content: {direct_content}")
         print(f"Language: {target_lang}")
@@ -138,181 +186,98 @@ def execute(messages: List[Message], context: Dict[str, Any], index: int = -1) -
         print(f"\nExecuted command: {cmd}")
         print("\nOutput:")
         Colors.print_colored(output, Colors.GREEN)
-        messages.append(Message(role=context.get('role', 'user'), content=output))
+        xml_content = f"<cmd><![CDATA[{cmd}]]></cmd>\n<output><![CDATA[{output}]]></output>"
+        messages.append(Message(role='assistant', content=xml_content))
         return messages
-    
-    # Initialize content variable before processing code blocks
+
     try:
         content: str = messages[index]['content']
         if not isinstance(content, str):
             print(f"Warning: Message content is not a string: {type(content)}")
             return messages
     except (IndexError, KeyError):
-        print(f"Error: Cannot access message at index {index}")
+        llt(f"Error: Cannot access message at index {index}")
         return messages
-    
-    # Regular expression to find code blocks - captures the entire block including ```
+
     pattern = r"```(\S+)\n(.*?)\n```"
     code_blocks = list(re.finditer(pattern, content, re.DOTALL))
-    
-    # Skip further processing if no code blocks found
+
     if not code_blocks:
         print("No code blocks found in the message.")
         return messages
-    
-    # Process blocks in reverse to avoid messing up positions
-    modified_content = content  # Create a working copy of the content
-    blocks_executed = False
-    
-    for match in reversed(code_blocks):
-        block_start, block_end = match.span()
+
+    for match in code_blocks:
         language = match.group(1)
         code = match.group(2).strip()
-        
-        # Skip blocks that don't match target language
         if target_lang and language != target_lang:
             continue
-            
         print(f"\nCode block ({language}):")
         Colors.print_colored(code, Colors.CYAN)
-
         if context.get('auto') or (context.get('non_interactive') or confirm_action("Execute this block?")):
             try:
                 output, cmd = execute_code(code, language, timeout)
-                print(f"\nExecuted command: {cmd}")
-                print("\nOutput:")
-                Colors.print_colored(output, Colors.GREEN)
-                # Replace the block with its output
-                modified_content = modified_content[:block_start] + output + modified_content[block_end:]
-                blocks_executed = True
+             
             except Exception as e:
-                error_msg = f"Error executing block: {str(e)}"
-                Colors.print_colored(error_msg, Colors.RED)
-    
-    # Only update the message if we actually executed blocks
-    if blocks_executed:
-        messages[index]['content'] = modified_content
-        print(f"Updated message content at index {index}")
+                output, cmd = f"Error executing block: {str(e)}", ""     
+            xml_content = f"<cmd><![CDATA[{cmd}]]></cmd>\n<output><![CDATA[{output}]]></output>"
+            messages.append(Message(role='user', content=xml_content))
     return messages
 
-
-@llt(needs_index=True)
-def apply_blocks(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
+@llt()
+def encode_images(messages: List[Message], args: Dict[str, Any], index: int = -1) -> List[Message]:
     """
-    Description: Write code blocks to files at project root path
+    Description: Encode image URLs into the proper format for different LLM providers.
     Type: bool
     Default: false
-    flag: apply_blocks
-    short: apply
-    param: lang string None
-    param: target string None
-    param: backup bool True
-    param: no_diff bool False
-    param: force bool False
-    param: timeout int 30
+    flag: encode_images
+    short: ei
     """
-    plugin_args = context.get("apply_blocks", {})
-    lang_filter = plugin_args.get('lang')
-    target_file = plugin_args.get('target')
-    create_backups = plugin_args.get('backup', True)
-    show_diff = not plugin_args.get('no_diff', False)
-    force = plugin_args.get('force', False)
-    timeout = plugin_args.get('timeout', 30)
-
-    msg_index = get_valid_index(messages, "write code blocks from", index)
-
-    modified: List[str] = []
-    skipped: List[str] = []
-    executed: List[str] = []
-    edited: List[str] = []
+    encoded_messages = None
+    provider_format = args.get('format', 'auto')
     
-    project_dir = get_project_dir(context)
-    editor = os.environ.get("EDITOR", "vim")
-
-    for block in iter_blocks(
-        messages[msg_index],
-        predicate=lambda b: (not lang_filter or b["language"] == lang_filter) and 
-                           (not target_file or b["filename"] == target_file)
-    ):
-        print(f"\n{block['language']} block:")
-        Colors.print_colored(block["content"], Colors.CYAN)
-
-        # Special handling for bash blocks if no filename
-        if block["language"] in ["bash", "shell"] and not block["filename"]:
-            if force or confirm_action("Execute this bash block?"):
-                try:
-                    output, cmd = execute_code(block["content"], block["language"], timeout)
-                    print(f"\nExecuted command: {cmd}")
-                    print("\nOutput:")
-                    Colors.print_colored(output, Colors.GREEN)
-                    executed.append(f"Command: {cmd}")
-                    messages.append(Message(role=context.get('role', 'user'), content=output))
-                except Exception as e:
-                    error_msg = f"Error executing bash block: {str(e)}"
-                    Colors.print_colored(error_msg, Colors.RED)
-                    skipped.append(f"Bash execution: {block['content'][:20]}...")
-                continue
-
-        suggested_ext = language_extension_map.get(block["language"], ".txt")
-        default_name = block["filename"] or f"block_{block['index']}{suggested_ext}"
-
-        filepath = input_handler.get_path_input(
-            f"Enter filename for {block['language']} block (default is {default_name})",
-            default=default_name,
-            root_dir=project_dir
-        )
-        
-        if os.path.exists(filepath):
-            if create_backups:
-                backup_manager.create_backup(str(filepath))
-
-            if show_diff:
-                old_content = file_handler.read(str(filepath))
-                if old_content is not None:
-                    diff = diff_handler.generate(old_content, block["content"])
-                    print("\nChanges to be applied:")
-                    print(diff_handler.format(diff))
-
-            if force or confirm_action("Write changes?"):
-                os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                if file_handler.write(str(filepath), block["content"]):
-                    print(f"Modified/Created file: {filepath}")
-                    modified.append(str(filepath))
-                else:
-                    skipped.append(str(filepath))
-            else:
-                skipped.append(str(filepath))
-        else:
-            if force or confirm_action(f"Create new file {filepath}?"):
-                os.makedirs(os.path.dirname(filepath), exist_ok=True)
-                if file_handler.write(str(filepath), block["content"]):
-                    modified.append(str(filepath))
-                else:
-                    skipped.append(str(filepath))
-            else:
-                skipped.append(str(filepath))
-
-    summary = ["File operations complete."]
-    if modified:
-        summary.append("Modified/Created:")
-        summary.extend(f"  - {f}" for f in modified)
-    if executed:
-        summary.append("Executed:")
-        summary.extend(f"  - {f}" for f in executed)
-    if edited:
-        summary.append("Edited:")
-        summary.extend(f"  - {f}" for f in edited)
-    if skipped:
-        summary.append("Skipped:")
-        summary.extend(f"  - {f}" for f in skipped)
-
-    messages.append(Message(
-        role=context.get('role', 'user'),
-        content="\n".join(summary)
-    ))
-    return messages
-
-
+    for i, message in enumerate(messages):
+        if message.get("role") == "user" and message.get("content") and isinstance(message["content"], list):
+            for j, content_item in enumerate(message["content"]):
+                if content_item.get("type") == "image_url":
+                    image_url = content_item["image_url"]
+                    if isinstance(image_url, dict) and "url" in image_url:
+                        image_url = image_url["url"]
+                        
+                    if image_url.startswith("file://") or os.path.exists(image_url):
+                        if encoded_messages is None:
+                            encoded_messages = json.loads(json.dumps(messages))
+                        try:
+                            # Create an ImageFile instance and ensure it's valid
+                            path = image_url.replace("file://", "")
+                            image = ImageFile.from_path(path)
+                            
+                            if not image.exists or not image.data:
+                                Colors.print_colored(f"Failed to encode image: {path}", Colors.RED)
+                                continue
+                            
+                            _, ext = os.path.splitext(path)
+                            if provider_format == 'claude':
+                                encoded_messages[i]["content"][j] = {
+                                    "type": "image",
+                                    "source": {
+                                        "type": "base64",
+                                        "media_type": image.media_type,
+                                        "data": image.data
+                                    }
+                                }
+                            else:  # OpenAI format
+                                encoded_messages[i]["content"][j] = {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{image.media_type};base64,{image.data}"
+                                    }
+                                }
+                            Colors.print_colored(f"Encoded image: {path} for {provider_format} format", Colors.GREEN)
+                        except Exception as e:
+                            Colors.print_colored(f"Error encoding image: {e}", Colors.RED)
+                            return messages
+                        
+    return encoded_messages or messages
 @llt(needs_index=True)
 def edit_content(messages: List[Message], context: Dict[str, Any], index: int = -1) -> List[Message]:
     """
@@ -337,14 +302,14 @@ def edit_content(messages: List[Message], context: Dict[str, Any], index: int = 
 
     editor = os.environ.get("EDITOR", "vim")
 
-    with temp_file(suffix=".md", content=messages[msg_index].content) as temp_path:
+    with temp_file(suffix=".md", content=messages[msg_index]["content"]) as temp_path:
         try:
             subprocess.run([editor, temp_path], check=True)
             new_content = file_handler.read(temp_path)
-            if new_content is not None and new_content != messages[msg_index].content:
+            if new_content is not None and new_content != messages[msg_index]["content"]:
                 if create_backup:
                     backup_manager.create_backup(temp_path)
-                messages[msg_index].content = new_content
+                messages[msg_index]["content"] = new_content
 
         except Exception as e:
             Colors.print_colored(f"Error editing content: {e}", Colors.RED)
@@ -372,7 +337,7 @@ def copy(messages: List[Message], context: Dict[str, Any], index: int = -1) -> L
     Type: bool
     Default: false
     flag: copy
-    short: c
+    short: yy
     param: blocks bool False
     param: lang string None
     """
@@ -393,13 +358,13 @@ def copy(messages: List[Message], context: Dict[str, Any], index: int = -1) -> L
             predicate=lambda b: not lang_filter or b["language"] == lang_filter
         ))
         if blocks:
-            content = "\n\n".join(b["content"] for b in blocks)
+            content = "\n\n".join(b.content for b in blocks)
             pyperclip.copy(content)
             print(f"Copied {len(blocks)} code blocks to clipboard.")
         else:
             print("No matching code blocks found.")
     else:
-        pyperclip.copy(messages[index].content)
+        pyperclip.copy(messages[index]["content"])
         print("Copied message to clipboard.")
 
     return messages
@@ -410,7 +375,7 @@ def file_include(messages: List[Message], context: Dict[str, Any], index: int = 
     """
     Description: Include file content (including images) into the conversation
     Type: string
-    Default: base
+    Default: base   
     flag: file
     short: f
     """
@@ -432,24 +397,31 @@ def file_include(messages: List[Message], context: Dict[str, Any], index: int = 
             prompt = input_handler.get_input("Enter prompt") or prompt
         
         try:
-            encoded_image = file_handler.encode_image_to_base64(file_path)
-            if not encoded_image:
+            # Use the ImageFile model for validation and encoding
+            image = ImageFile.from_path(file_path)
+            if not image.data:
+                Colors.print_colored(f"Failed to encode image: {file_path}", Colors.RED)
                 return messages
+                
+            messages.append(Message(
+                role="user", 
+                content=[
+                    {"type": "image_url", "image_url": {"url": f"data:{image.media_type};base64,{image.data}"}},
+                    {"type": "text", "text": prompt or ""},
+                ],
+            ))
         except Exception as e:
             Colors.print_colored(f"Failed to encode image: {e}", Colors.RED)
             return messages
-        
-        messages.append(Message(
-            role="user", 
-            content=[
-                {"type": "image_url", "image_url": {"url": f"data:image/{ext[1:]};base64,{encoded_image}"}},
-                {"type": "text", "text": prompt or ""},
-            ],
-        ))
     else:
-        content = file_handler.read(file_path)
-        if content is not None:
-            if ext.lower() in language_extension_map.values():
-                content = f"```{os.path.basename(file_path)}\n{content}\n```"
+        # Use the TextFile model for validation and content reading
+        text_file = TextFile.from_path(file_path)
+        if text_file.content is not None:
+            if text_file.language:
+                content = f"```{os.path.basename(file_path)}\n{text_file.content}\n```"
+            else:
+                content = text_file.content
             messages.append(Message(role=context.get('role', 'user'), content=content))
+        else:
+            Colors.print_colored(f"Failed to read file: {file_path}", Colors.RED)
     return messages

@@ -15,7 +15,8 @@ import traceback
 import pathspec
 
 # LLT imports
-from tools import llt
+from tools import llt, ScheduledCommand
+from logger import llt_logger
 from message import Message
 from utils import (
     Colors,
@@ -272,7 +273,7 @@ def include_project_context(messages: List[Dict], context: Dict[str, Any], index
     param: glob string None             
     param: no_gitignore bool False      
     param: no_git_ls bool False         
-    param: max_size int None            
+    param: max_size int 20000         
     """
     if context.get("project_dir"):
         project_dir = context["project_dir"]
@@ -284,14 +285,6 @@ def include_project_context(messages: List[Dict], context: Dict[str, Any], index
     directory = context.get("directory", None) or project_dir
     abs_dir = os.path.abspath(directory)
     
-    # Report on application settings from context
-    Colors.print_colored(f"Running with model: {context.get('model', 'unknown')}", Colors.BLUE)
-    
-    # Access to LLT directories from context
-    Colors.print_colored(f"LL directory: {context.get('ll_dir', 'not set')}", Colors.BLUE)
-    Colors.print_colored(f"Exec directory: {context.get('exec_dir', 'not set')}", Colors.BLUE)
-
-    # Combine default ignores with user-provided ones
     ignored_patterns = set(DEFAULT_IGNORED_PATTERNS)
     if context.get("ignore"):
         ignored_patterns.update(p.strip() for p in context["ignore"].split(','))
@@ -300,16 +293,7 @@ def include_project_context(messages: List[Dict], context: Dict[str, Any], index
     use_gitignore = not context.get("no_gitignore", False)
     use_git_ls = not context.get("no_git_ls", False) and os.path.isdir(os.path.join(abs_dir, '.git'))
     max_total_size = context.get("max_size")
-    # Use role from context
-    role = context.get("role", "user")
-
-    Colors.print_colored(f"Building context for: {abs_dir}", Colors.BLUE)
-    Colors.print_colored(f"Ignoring patterns: {', '.join(ignored_patterns)}", Colors.BLUE)
-    if globs: Colors.print_colored(f"Filtering with globs: {', '.join(globs)}", Colors.BLUE)
-    Colors.print_colored(f"Using .gitignore: {use_gitignore}", Colors.BLUE)
-    Colors.print_colored(f"Using git ls-files: {use_git_ls}", Colors.BLUE)
-    if max_total_size: Colors.print_colored(f"Max total size: {max_total_size} bytes", Colors.BLUE)
-
+    
     files_to_include = _get_project_files(
         abs_dir, ignored_patterns, globs, use_gitignore, use_git_ls
     )
@@ -351,7 +335,7 @@ def include_project_context(messages: List[Dict], context: Dict[str, Any], index
             included_count += 1
 
         except Exception as e:
-            Colors.print_colored(f"Error reading or processing {rel_path}: {e}", Colors.RED)
+            llt_logger.log_info(f"Error reading or processing {rel_path}: {e}", Colors.RED)
 
     context_string = '\n\n'.join(output_parts)
     summary = f"Included {included_count} files ({total_size / 1024:.1f} KB total)."
@@ -365,10 +349,7 @@ def include_project_context(messages: List[Dict], context: Dict[str, Any], index
         Colors.print_colored("No content included.", Colors.YELLOW)
         return messages
 
-    # Add as a user message? Or tool message? User seems appropriate for context.
-    # Return a new list instead of modifying the input list in place (immutability principle)
-    Colors.print_colored("Project context added to messages.", Colors.GREEN)
-    return messages + [Message(role=role, content=context_string)]
+    return messages + [Message(role=context.get("role", "user"), content=context_string)]
 
 
 @llt()

@@ -370,8 +370,8 @@ def get_valid_index(messages: Sequence[Dict], prompt: str, default: int = -1) ->
             return False
 
     def transform(value: str) -> int:
-        return int(value) if value else default
-
+        idx = int(value) if value else default
+        return idx if idx >= 0 else len(messages) + idx
     return input_handler.get_input(
         f"Enter index of message to {prompt}",
         default=default,

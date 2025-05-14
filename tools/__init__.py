@@ -167,14 +167,12 @@ def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
         arg_type = info['type']
         default_val = info['default']
 
-        if flag_str in used_flags:
-            llt_logger.log_info(f"Duplicate tool flag '{flag_str}' in {tool_name}", {"tool": tool_name})
         used_flags.add(flag_str)
 
         cli_flags = [f"--{flag_str}"]
         if short_str:
             if short_str in used_shorts:
-                llt_logger.log_info(f"Duplicate short flag '-{short_str}' in {tool_name}", {"tool": tool_name})
+                llt_logger.log_error(f"Duplicate short flag '-{short_str}' in {tool_name}", {"tool": tool_name})
             else:
                 cli_flags.append(f"-{short_str}")
             used_shorts.add(short_str)
@@ -206,51 +204,6 @@ def add_tool_arguments(parser: argparse.ArgumentParser) -> None:
                 default=default_val,
                 help=description
             )
-            
-        # Add sub-flags for this tool
-        subflags = info.get('subflags', {})
-        for subflag_name, subflag_info in subflags.items():
-            subflag_type = subflag_info['type']
-            subflag_default = subflag_info['default']
-            
-            # Create both --flag-sub and --flag.sub formats
-            subflag_hyphen = f"--{flag_str}-{subflag_name}"
-            subflag_dot = f"--{flag_str}.{subflag_name}"
-            
-            # Create destination name for argparse (will be used by pack_namespaced_args)
-            dest = f"{flag_str}_{subflag_name}"
-            
-            subflag_help = f"Parameter '{subflag_name}' for {flag_str}"
-            
-            if subflag_type in ("bool", "boolean"):
-                parser.add_argument(
-                    subflag_hyphen, subflag_dot,
-                    dest=dest,
-                    action='store_true',
-                    default=(str(subflag_default).lower() == "true") if subflag_default is not None else False,
-                    help=subflag_help
-                )
-            elif subflag_type in ("int", "float"):
-                py_type = int if subflag_type == "int" else float
-                try:
-                    default_conv = py_type(subflag_default) if subflag_default is not None else None
-                except (ValueError, TypeError):
-                    default_conv = None
-                parser.add_argument(
-                    subflag_hyphen, subflag_dot,
-                    dest=dest,
-                    type=py_type,
-                    default=default_conv,
-                    help=subflag_help
-                )
-            else:
-                parser.add_argument(
-                    subflag_hyphen, subflag_dot,
-                    dest=dest,
-                    type=str,
-                    default=subflag_default,
-                    help=subflag_help
-                )
 
 
 def make_scheduled_from_tool_use(
@@ -528,7 +481,7 @@ def schedule_startup_commands(args) -> deque[ScheduledCommand]:
         i += 1
     
     if not args.non_interactive:
-        llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
+         llt_logger.log_info("llt session started", {"cli_command": " ".join(cli_command)})
     
     command_log = {
         "timestamp": datetime.now().isoformat(),
@@ -635,6 +588,6 @@ def registry_to_json_schema() -> List[Dict[str, Any]]:
         tools.append(tool_spec)
     
     # optional: write to disk
-    with open(os.path.expanduser("~/.llt/tool_registry.json"), "w") as f:
+    with open(os.path.expanduser("~/llt/tool_registry.json"), "w") as f:
         json.dump(tools, f, indent=2)
     return tools

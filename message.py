@@ -6,6 +6,7 @@ from typing import Optional, Dict, List, Any
 
 from tools import llt
 from utils import input_handler, get_valid_index, Colors
+
 class Message(Dict):
     role: str
     content: Any
@@ -58,7 +59,7 @@ def save(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     if not dict["non_interactive"] and not dict["auto"]:
         ww_path = input_handler.get_path_input(
             "Enter path to save ll file",
-            default=dict["save"] if dict["save"] else dict["load"],
+            default=dict["save"] if dict["save"] != "temp.ll" else dict["load"],
             root_dir=dict["ll_dir"]
         )
     else:
@@ -90,7 +91,7 @@ def prompt(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return messages + [new_message]
 
 
-@llt()
+@llt(needs_index=True)
 def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Remove a message from the conversation
@@ -99,23 +100,19 @@ def remove(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     flag: remove
     short:
     """
-    if not dict.get('non_interactive'):
-        message_index = get_valid_index(messages, "remove", index)
-    else:
-        message_index = index
+    # get_valid_index now converts negative indices to positive ones
+    message_index = get_valid_index(messages, "remove", index)
+    if message_index < 0: message_index = len(messages) + message_index
+    before = messages[:message_index]
+    after = messages[message_index + 1:]
+    new_messages = before + after
     
-    if not (0 <= abs(message_index) < len(messages)):
-        if not dict["non_interactive"]:
-            Colors.print_colored(f"Error: Index {message_index} is out of bounds for messages list of length {len(messages)}.", Colors.RED)
-        return messages # Return original list if index is invalid
-
-    new_messages = messages[:message_index] + messages[message_index+1:]
     if not dict["non_interactive"]:
         Colors.print_colored(f"Removed message at index {message_index + 1}.", Colors.GREEN)
     return new_messages
 
 
-@llt(needs_index=True) # This one is already correct
+@llt(needs_index=True)
 def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Attach a set of messages from file at specified index
@@ -159,7 +156,7 @@ def attach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return messages
 
 
-@llt()
+@llt(needs_index=True)
 def detach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Detach a message from the conversation
@@ -177,7 +174,7 @@ def detach(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return messages
 
 
-@llt()
+@llt(needs_index=True)
 def fold(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Fold contiguous messages of the same role into one
@@ -225,7 +222,7 @@ def fold(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     return folded_messages_list
 
 
-@llt()
+@llt(needs_index=True)
 def insert(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Insert a new message at a specified index
@@ -246,7 +243,7 @@ def insert(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     if message_index > len(messages):
         message_index = len(messages)
         
-    new_message_to_insert = Message(role="user", content="Message inserted.")
+    new_message_to_insert = Message(role="user", content="")
     
     new_messages = messages[:message_index] + [new_message_to_insert] + messages[message_index:]
     
@@ -254,7 +251,7 @@ def insert(messages: List[Message], dict: Dict, index: int = -1) -> List[Message
     return new_messages
 
 
-@llt()
+@llt(needs_index=True)
 def change_role(messages: List[Message], dict: Dict, index: int = -1) -> List[Message]:
     """
     Description: Modify the role of a message
@@ -289,7 +286,7 @@ def change_role(messages: List[Message], dict: Dict, index: int = -1) -> List[Me
     return new_messages_list
 
 
-@llt()
+@llt(needs_index=True)
 def view(messages: List[Message], dict: Dict, index: int = 0) -> List[Message]:
     """
     Description: View messages with formatting
@@ -347,7 +344,7 @@ def view(messages: List[Message], dict: Dict, index: int = 0) -> List[Message]:
     return messages
 
 
-@llt()
+@llt(needs_index=True)
 def cut(messages: List[str], dict: Dict, index: int = -1) -> List[str]:
     """
     Description: Cut messages within a specified range

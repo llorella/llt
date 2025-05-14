@@ -49,7 +49,7 @@ def xml_wrap(messages: List[Dict], args: Dict, index: int = -1) -> List[Dict]:
         if tag_name not in existing_tags:
             existing_tags.append(tag_name)
             save_xml_tags(existing_tags)
-            llt_logger.log_info(f"New XML tag added: {tag_name}")
+#             llt_logger.log_info(f"New XML tag added: {tag_name}")
 
     return messages
 

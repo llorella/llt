@@ -224,12 +224,12 @@ def url_fetch(messages: List[Dict[str, Any]], context: Dict[str, Any], index: in
             'content': f'<url>\n{url}\n</url>\n\n<content>\n{formatted_content}\n</content>\n'
         }
 
-        llt_logger.log_info("URL content fetched and processed", {
+        """ llt_logger.log_info("URL content fetched and processed", {
             "url": url,
             "tags_used": tags,
             "content_length": len(formatted_content),
             **metadata
-        })
+        }) """
         
         # Return a new list instead of modifying in place (immutability principle)
         return messages + [new_message]

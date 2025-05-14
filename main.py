@@ -146,8 +146,8 @@ def calculate_context_delta(old_context: Context, new_context: Context) -> Dict[
 
 def calculate_messages_delta(old_messages: Messages, new_messages: Messages) -> Tuple[List[MessagePlaceholder], List[int]]:
     """
-    Calculate added message placeholders. Assumes messages are primarily appended.
-    Handles the specific case where the last message might be removed (tool command).
+    Calculate added message placeholders and removed indices.
+    Handles both message additions and removals from any position.
     Returns (added_message_placeholders, removed_indices).
     """
     old_len = len(old_messages)
@@ -180,14 +180,22 @@ def calculate_messages_delta(old_messages: Messages, new_messages: Messages) -> 
     # Case where last message might have been removed (e.g., tool command)
     if new_len == old_len - 1 and new_messages == old_messages[:-1]:
         return [], [old_len - 1] # Indicate removal of the last index of old_messages
-
-    # If it's neither simple append nor last item removal, log all new messages as added
+    
+    # Case where any single message might have been removed
+    if new_len == old_len - 1:
+        # Try to find which message was removed
+        for i in range(old_len):
+            # Create a list without the message at index i
+            messages_without_i = old_messages[:i] + old_messages[i+1:]
+            if messages_without_i == new_messages:
+                return [], [i]  # Return the index of the removed message
+    
+    # If it's neither simple append nor a single message removal, log and use fallback
     # This is a fallback and might not perfectly capture complex modifications.
     # A more sophisticated diff algorithm could be used here if needed.
-    # See GEMINI.md: Delta Calculation Complexity
-    llt_logger.log_warning("Messages delta calculation fallback used.", {"old_len": old_len, "new_len": new_len})
-    placeholders = [create_placeholder(msg, i + old_len) for i, msg in enumerate(new_messages[old_len:])]
-    return placeholders, [] # Best guess: treat as append
+    #llt_logger.log_warning("Messages delta calculation fallback used.", {"old_len": old_len, "new_len": new_len})
+    placeholders = [create_placeholder(msg, i) for i, msg in enumerate(new_messages)]
+    return placeholders, [] # Best guess: treat as complete replacement
 
 def get_tool_source(cmd_map: CommandMap, cmd_name: str) -> Optional[str]:
     """Attempt to find the source module of a command."""
@@ -197,57 +205,6 @@ def get_tool_source(cmd_map: CommandMap, cmd_name: str) -> Optional[str]:
         except AttributeError:
             return "unknown_source"
     return None
-
-def get_resource_references(command: ScheduledCommand, old_state: AppState, new_state: AppState) -> Dict[str, Any]:
-    """Determine relevant resource references based on the command."""
-    references = {}
-    cmd_name = command.name
-    cmd_value = command.value
-
-    # File/Path related commands
-    if cmd_name in ["load", "write", "attach", "file", "include_project_context"]:
-        if cmd_value:
-            references["referenced_path"] = cmd_value
-        elif cmd_name == "load" and new_state.context.get("load") != old_state.context.get("load"):
-             # Handle cases where load might update context directly
-             references["referenced_path"] = new_state.context.get("load")
-        # Future: Add file hash: references["path_hash_sha256"] = calculate_file_hash(path)
-
-    # Model / Generation related commands
-    elif cmd_name in ["complete", "gen", "llm", "generate"]: # Assuming aliases
-        references["model_used"] = old_state.context.get("model")
-        references["temperature_used"] = old_state.context.get("temperature")
-        references["max_tokens_setting"] = old_state.context.get("max_tokens")
-        references["top_p_setting"] = old_state.context.get("top_p")
-    elif cmd_name == "change_model":
-        if cmd_value:
-            references["model_changed_to"] = cmd_value
-
-    # External Interaction Commands
-    elif cmd_name == "url_fetch":
-        if cmd_value:
-            references["fetched_url"] = cmd_value
-    elif cmd_name == "email":
-        if cmd_value:
-            references["email_details"] = cmd_value # Could be recipient, subject etc.
-    elif cmd_name in ["git_ls_files", "git_status", "git_diff"]:
-        references["git_operation"] = cmd_name
-        references["project_dir"] = old_state.context.get("project_dir") # Assuming project_dir context exists
-
-    # Execution / Application Commands
-    elif cmd_name in ["execute", "apply"]:
-        references["action_type"] = cmd_name
-        references["target_index"] = command.index
-        # Future: Could add language/code snippet hash if feasible
-
-    # Context Modification
-    elif cmd_name == "modify_args":
-        references["context_modifier"] = cmd_name
-        # Changes are primarily captured in context_delta
-
-    # Add others based on llt_tools.json as needed (e.g., screenshot, whisper)
-
-    return references
 
 def log_command_execution(
     old_state: AppState,
@@ -271,8 +228,8 @@ def log_command_execution(
     context_delta = calculate_context_delta(old_state.context, new_state.context)
     messages_added, messages_removed_indices = calculate_messages_delta(old_state.messages, new_state.messages)
 
-    # Get resource references based on the command
-    resource_references = get_resource_references(command, old_state, new_state)
+    #     resource_references = get_resource_references(command, old_state, new_state)
+
 
     log_entry = {
         "log_id": log_id,
@@ -289,7 +246,7 @@ def log_command_execution(
             "messages_added": messages_added,
             "messages_removed_indices": messages_removed_indices # Placeholder for future use
         },
-        "resource_references": resource_references,
+        "resource_references": {},
         "output_summary": { # Basic summary, could be enhanced by tools returning status
              "status": "success", # Assume success if we got here
              "new_message_count": len(messages_added)
@@ -374,8 +331,6 @@ def process_command(
     Maintains compatibility with existing tools by managing mutable state copies.
     """
     if cmd.name in cmd_map:
-        if not state.context.get('non_interactive'):
-            print(f"\nllt> {cmd.name}")
         try:
             # Create mutable copies for tool compatibility
             messages, context = state.to_tool_args()
@@ -389,7 +344,6 @@ def process_command(
                     original_value = context.get(cmd.name)
                 
                 # Debug print the command details
-                print(f"DEBUG: Command {cmd.name}, Value type: {type(cmd.value)}, Value: {cmd.value}")
                 
                 # Special handling for dictionary values (complex parameters)
                 if isinstance(cmd.value, dict):
@@ -401,7 +355,6 @@ def process_command(
                     for key, value in cmd.value.items():
                         context[cmd.name][key] = value
                         
-                    print(f"DEBUG: Updated context[{cmd.name}] with dictionary: {context[cmd.name]}")
                 else:
                     # For simple values, just assign directly
                     context[cmd.name] = cmd.value
@@ -436,8 +389,7 @@ def process_command(
             if original_value is not None:
                 context[cmd.name] = original_value
             
-            # Create new state with updates from tool
-            # Explicit typing to satisfy the linter
+            
             messages_list: Messages = list(new_messages)
             context_dict: Context = dict(context)
             cmd_queue: deque[ScheduledCommand] = command_queue
@@ -492,25 +444,16 @@ def get_next_command(
     Adds logging for command retrieval steps.
     """
     if state.command_queue:
-        llt_logger.log_info("Dequeuing command from command_queue.", {
-            "queue_length": len(state.command_queue),
-            "queue": [str(cmd) for cmd in state.command_queue]
-        })
         popped_command = state.command_queue.popleft()
-        print(f"\nDequeued command: {popped_command.name}")
-        print(cmd_map[popped_command.name])
+
         return popped_command
     elif state.context.get('non_interactive'):
-        llt_logger.log_info("Non-interactive mode: no more commands to process.")
+#         llt_logger.log_info("Non-interactive mode: no more commands to process.")
+        print(f"\nllt> quit")
         return None
 
     cmd_name, value, index = llt_interactive_input(list(cmd_map.keys()))
     internal_index = index if index is not None else -1
-    llt_logger.log_info("Received interactive command.", {
-        "cmd_name": cmd_name,
-        "value": value,
-        "index": internal_index
-    })
     return ScheduledCommand(cmd_name, internal_index, value=value)
 
 def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
@@ -520,12 +463,12 @@ def run_llt(initial_state: AppState, cmd_map: CommandMap) -> None:
     def process_interrupt(state: AppState) -> AppState:
         """Handle keyboard interrupts."""
         if not state.context.get('non_interactive'):
-            print("\nReceived keyboard interrupt")
+            llt_logger.log_info("\nReceived keyboard interrupt")
         try:
             time.sleep(0.5)  # Allow for double-interrupt check
         except KeyboardInterrupt:
             if not state.context.get('non_interactive'):
-                print("\nDouble interrupt - exiting...")
+                llt_logger.log_info("\nReceived keyboard interrupt")
             sys.exit(1) # Exit with error code on interrupt
 
         if state.context.get('auto'):
