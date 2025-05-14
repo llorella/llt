@@ -464,13 +464,12 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
     system_prompt = system_msgs[0]["content"] if system_msgs else "You are a helpful assistant. You can use tools to assist the user."
     payload_msgs = list(filter(lambda m: m.get("role") != "system", messages))
     
-    # Handle image content if present
     for message in payload_msgs:
         if isinstance(message.get("content"), list):
             for content_item in message["content"]:
                 if content_item.get("type") == "image" and content_item["source"].get("data", "").startswith("file://"):
                     print(f"Found image in message: {content_item['source']['data']}")
-                    pass  # Handle image loading if needed
+                    pass 
 
     response_content = ""
     tool_blocks: List[ToolUseBlock] = []  # Explicitly type tool_blocks
@@ -486,10 +485,7 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
     if args.get('max_tokens'):
         params["max_tokens"] = args['max_tokens']
     
-    # Add tool support if requested
-    if use_tool_mode:
-#         llt_logger.log_info("Use tool mode enabled. Attempting to use/build tool catalogue.")
-        
+    if use_tool_mode:        
         global _CACHED_ANTHROPIC_TOOL_CATALOGUE, _CACHED_TOOLS_JSON_MTIME
         
         current_mtime = None
@@ -501,9 +497,7 @@ def get_anthropic_completion(messages: List[Message], args: Dict[str, Any]) -> A
         except OSError as e:
             llt_logger.log_warning(f"Could not get mtime for {TOOLS_JSON_PATH}: {e}. Tool schema caching may be affected.")
 
-        # Cache validation logic
         if _CACHED_ANTHROPIC_TOOL_CATALOGUE is not None:
-            # Case 1: File existed and mtime matches
             if current_mtime is not None and _CACHED_TOOLS_JSON_MTIME is not None and current_mtime == _CACHED_TOOLS_JSON_MTIME:
                 llt_logger.log_info("Using cached tool catalogue (version match based on tools.json mtime).")
             # Case 2: File was missing/inaccessible before, and still is. Assume cache is valid for this state.
